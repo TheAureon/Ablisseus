@@ -22,6 +22,8 @@ const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
 const overlayStatus = document.getElementById('overlay-status');
 const hint = document.getElementById('hint');
+const crosshair = document.getElementById('crosshair');
+crosshair.style.width = crosshair.style.height = CONFIG.ui.crosshairSize + 'px';
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
 // ── Renderer ────────────────────────────────────────────────────────────────
@@ -76,6 +78,7 @@ overlayStatus.textContent = isTouch ? 'tap to wander' : 'click to wander';
 
 function begin() {
   overlay.classList.add('hidden');
+  if (CONFIG.ui.crosshair) crosshair.style.opacity = CONFIG.ui.crosshairOpacity;
   startAudio();
   if (isTouch) player.setEnabled(true);
   else canvas.requestPointerLock();

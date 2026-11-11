@@ -128,16 +128,16 @@ export const CONFIG = {
   sky: {
     sunTilt: 0.35, // how far the sun's arc leans off vertical
     keyframes: [
-      { t: 0.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 0.6 , ambientSky: '#2a3a6e', ambientGround: '#0c0f1c', ambientIntensity: 0.9 , fogDensity: 0.0050, stars: 1.0, motes: 1.0, exposure: 1.0 },
-      { t: 0.21, skyTop: '#0a0d24', skyHorizon: '#2a2c55', lightColor: '#8fa8ff', lightIntensity: 0.6 , ambientSky: '#34406f', ambientGround: '#10121f', ambientIntensity: 0.9 , fogDensity: 0.0060, stars: 0.8, motes: 0.9, exposure: 1.0 },
-      { t: 0.25, skyTop: '#2a3a78', skyHorizon: '#e58d6e', lightColor: '#ff9e6b', lightIntensity: 0.0,  ambientSky: '#6f6a9a', ambientGround: '#2a2230', ambientIntensity: 1.1,  fogDensity: 0.0075, stars: 0.15, motes: 0.4, exposure: 1.0 },
+      { t: 0.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0050, stars: 1.0, motes: 1.0, exposure: 1.35},
+      { t: 0.21, skyTop: '#0a0d24', skyHorizon: '#2a2c55', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0060, stars: 0.8, motes: 0.9, exposure: 1.35},
+      { t: 0.25, skyTop: '#2a3a78', skyHorizon: '#e58d6e', lightColor: '#ff9e6b', lightIntensity: 0.0,  ambientSky: '#6f6a9a', ambientGround: '#2a2230', ambientIntensity: 1.6,  fogDensity: 0.0075, stars: 0.15, motes: 0.4, exposure: 1.15},
       { t: 0.30, skyTop: '#3d6cb8', skyHorizon: '#ffc79a', lightColor: '#ffc592', lightIntensity: 1.8,  ambientSky: '#9bb3d9', ambientGround: '#4a4034', ambientIntensity: 0.8,  fogDensity: 0.0065, stars: 0.0, motes: 0.25, exposure: 1.0 },
       { t: 0.40, skyTop: '#3a82d4', skyHorizon: '#c4e2f2', lightColor: '#fff3dd', lightIntensity: 3.0,  ambientSky: '#b5d3f0', ambientGround: '#5a5a44', ambientIntensity: 0.9,  fogDensity: 0.0035, stars: 0.0, motes: 0.15, exposure: 1.0 },
       { t: 0.60, skyTop: '#3a7fcf', skyHorizon: '#cfe3ea', lightColor: '#fff0d2', lightIntensity: 3.0,  ambientSky: '#b5d0ea', ambientGround: '#5a5a44', ambientIntensity: 0.9,  fogDensity: 0.0035, stars: 0.0, motes: 0.15, exposure: 1.0 },
       { t: 0.70, skyTop: '#3f66b0', skyHorizon: '#ffcf9c', lightColor: '#ffbf85', lightIntensity: 2.2,  ambientSky: '#a7b4d6', ambientGround: '#4f4234', ambientIntensity: 0.8,  fogDensity: 0.0055, stars: 0.0, motes: 0.3, exposure: 1.0 },
-      { t: 0.75, skyTop: '#2b2f6e', skyHorizon: '#f07a52', lightColor: '#ff8a55', lightIntensity: 0.0,  ambientSky: '#77669a', ambientGround: '#2c2030', ambientIntensity: 1.1,  fogDensity: 0.0075, stars: 0.15, motes: 0.6, exposure: 1.0 },
-      { t: 0.80, skyTop: '#0c0f2c', skyHorizon: '#3a2f5c', lightColor: '#8fa8ff', lightIntensity: 0.6 , ambientSky: '#34406f', ambientGround: '#10121f', ambientIntensity: 0.9 , fogDensity: 0.0060, stars: 0.8, motes: 1.0, exposure: 1.0 },
-      { t: 1.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 0.6 , ambientSky: '#2a3a6e', ambientGround: '#0c0f1c', ambientIntensity: 0.9 , fogDensity: 0.0050, stars: 1.0, motes: 1.0, exposure: 1.0 },
+      { t: 0.75, skyTop: '#2b2f6e', skyHorizon: '#f07a52', lightColor: '#ff8a55', lightIntensity: 0.0,  ambientSky: '#77669a', ambientGround: '#2c2030', ambientIntensity: 1.6,  fogDensity: 0.0075, stars: 0.15, motes: 0.6, exposure: 1.15},
+      { t: 0.80, skyTop: '#0c0f2c', skyHorizon: '#3a2f5c', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0060, stars: 0.8, motes: 1.0, exposure: 1.35},
+      { t: 1.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0050, stars: 1.0, motes: 1.0, exposure: 1.35},
     ],
     starCount: 1800,
   },
@@ -168,6 +168,12 @@ export const CONFIG = {
     footstepVolume: 0.1,
     music: null, // e.g. 'audio/ambient.mp3' (put the file in /audio)
     musicVolume: 0.5,
+  },
+
+  ui: {
+    crosshair: true, // small dot in the centre of the screen
+    crosshairSize: 4, // pixels
+    crosshairOpacity: 0.55,
   },
 
   debug: {
