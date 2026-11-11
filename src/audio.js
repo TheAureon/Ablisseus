@@ -5,21 +5,22 @@
 import { CONFIG } from './config.js';
 
 let started = false;
+let ctx = null;
+let noiseBuffer = null;
 
 export function startAudio() {
   if (started) return;
   started = true;
   const c = CONFIG.audio;
 
-  if (c.wind) {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const seconds = 4;
-    const buffer = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
 
+  if (c.wind) {
     const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
+    noise.buffer = noiseBuffer;
     noise.loop = true;
 
     const filter = ctx.createBiquadFilter();
@@ -49,4 +50,28 @@ export function startAudio() {
     music.volume = c.musicVolume;
     music.play().catch((err) => console.warn('[audio] Could not play music:', err));
   }
+}
+
+/** A soft footfall: a short burst of filtered noise. Slightly different each time. */
+export function playFootstep(strength = 1, inWater = false) {
+  const c = CONFIG.audio;
+  if (!ctx || !c.footsteps) return;
+  const now = ctx.currentTime;
+  const length = inWater ? 0.28 : 0.13;
+
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = inWater ? 'bandpass' : 'lowpass';
+  filter.frequency.value = (inWater ? 1400 : 520) * (0.8 + Math.random() * 0.4);
+  filter.Q.value = 0.8;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(c.footstepVolume * strength * (0.75 + Math.random() * 0.25), now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + length);
+
+  source.connect(filter).connect(gain).connect(ctx.destination);
+  source.start(now, Math.random() * 3, length + 0.05);
 }

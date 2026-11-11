@@ -10,12 +10,31 @@ export const CONFIG = {
   // ── Player ────────────────────────────────────────────────────────────────
   player: {
     eyeHeight: 1.7,
-    walkSpeed: 3.2, // metres / second
-    sprintSpeed: 6.5,
-    acceleration: 6, // higher = snappier starts/stops
+
+    // Pace
+    walkSpeed: 2.6, // metres / second
+    sprintSpeed: 5.2,
+    backwardFactor: 0.7, // walking backwards is slower
+    strafeFactor: 0.85, // so is sidestepping
+    acceleration: 4.5, // how quickly you get up to speed (lower = heavier)
+    deceleration: 6.5, // how quickly you come to rest
+    slopeEffect: 0.7, // uphill slows you, downhill speeds you up a little (0 = off)
+    wadeSlowdown: 0.45, // speed lost when knee-deep in water (0 = none)
+
+    // Looking
     lookSensitivity: 0.002,
-    bobAmount: 0.045, // head-bob height (0 to disable)
-    bobFrequency: 1.9, // bob cycles per metre walked (×π)
+    lookSmoothing: 0.045, // seconds of easing on mouse look (0 = raw input)
+
+    // Body motion — set any of these to 0 to switch it off
+    strideLength: 1.55, // metres per two steps; longer = slower bob
+    bobAmount: 0.032, // up/down per step
+    swayAmount: 0.018, // side-to-side weight shift per stride
+    bobRoll: 0.0035, // head tilt per stride (radians)
+    strafeLean: 0.014, // lean into sidesteps (radians)
+    breatheAmount: 0.006, // slow idle rise and fall
+    sprintFov: 4, // extra field of view while hurrying (degrees)
+    groundFollow: 10, // how tightly the eyes follow bumps (lower = floatier)
+
     wadeDepth: 0.6, // how deep into water you can walk
     spawn: [0, 0], // x, z — snaps to the nearest dry land
     startYaw: 0.6, // initial facing, radians
@@ -128,6 +147,8 @@ export const CONFIG = {
   audio: {
     wind: true, // procedurally generated wind, no file needed
     windVolume: 0.12,
+    footsteps: true, // soft synthesised footfalls
+    footstepVolume: 0.1,
     music: null, // e.g. 'audio/ambient.mp3' (put the file in /audio)
     musicVolume: 0.5,
   },

@@ -15,7 +15,7 @@ import { createScatter, createLandmarks, windUniforms } from './world/scatter.js
 import { createSky } from './world/sky.js';
 import { createMotes } from './world/motes.js';
 import { createPlayer } from './player.js';
-import { startAudio } from './audio.js';
+import { startAudio, playFootstep } from './audio.js';
 
 const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
@@ -66,6 +66,7 @@ const motes = createMotes();
 scene.add(motes.object);
 
 const player = createPlayer(camera, canvas);
+player.onStep = playFootstep;
 
 // ── Start / pause ───────────────────────────────────────────────────────────
 overlayStatus.textContent = isTouch ? 'tap to wander' : 'click to wander';
@@ -129,8 +130,9 @@ renderer.setAnimationLoop(() => {
   water.position.z = camera.position.z;
 
   renderer.toneMappingExposure = sky.state.exposure;
-  if (camera.fov !== CONFIG.render.fov) {
-    camera.fov = CONFIG.render.fov;
+  const fov = CONFIG.render.fov + player.fovOffset;
+  if (Math.abs(camera.fov - fov) > 0.01) {
+    camera.fov = fov;
     camera.updateProjectionMatrix();
   }
 
