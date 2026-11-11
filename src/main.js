@@ -11,6 +11,7 @@ import GUI from 'lil-gui';
 import { CONFIG } from './config.js';
 import { loadAssets } from './assets.js';
 import { createTerrain, createWater } from './world/terrain.js';
+import { biomeWeights, blend, blendColor, dominant, biomeLabel } from './world/biomes.js';
 import { createScatter, createLandmarks, windUniforms } from './world/scatter.js';
 import { createSky } from './world/sky.js';
 import { createMotes } from './world/motes.js';
@@ -118,6 +119,24 @@ window.TERRA = { CONFIG, scene, camera, player, live };
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
 const waterColor = new THREE.Color();
+const moteColor = new THREE.Color(CONFIG.motes.color);
+const moteTarget = new THREE.Color();
+let biomeFog = 1;
+
+// Shows a region's name for a few seconds when you walk well into it.
+const biomeText = document.getElementById('biome');
+let currentBiome = -1;
+let biomeTimer = null;
+function announceBiome(index, weights) {
+  if (index === currentBiome || weights[index] < 0.7) return;
+  const first = currentBiome < 0;
+  currentBiome = index;
+  if (first || !CONFIG.ui.biomeLabel) return; // no announcement for where you start
+  biomeText.textContent = biomeLabel(index);
+  biomeText.classList.add('show');
+  clearTimeout(biomeTimer);
+  biomeTimer = setTimeout(() => biomeText.classList.remove('show'), 4500);
+}
 
 renderer.setAnimationLoop(() => {
   timer.update();
@@ -128,8 +147,14 @@ renderer.setAnimationLoop(() => {
 
   player.update(dt);
   body.update(dt, player.state);
-  sky.update(live.time, camera.position, live.fog);
-  motes.update(elapsed, camera.position, sky.state.motes);
+  // The biome you are standing in tints the air: fog thickness and mote colour.
+  const weights = biomeWeights(player.position.x, player.position.z);
+  biomeFog += (blend(weights, 'fog', 1) - biomeFog) * Math.min(1, dt * 0.8);
+  moteColor.lerp(blendColor(weights, 'motes', moteTarget, CONFIG.motes.color), Math.min(1, dt * 0.8));
+  announceBiome(dominant(weights), weights);
+
+  sky.update(live.time, camera.position, live.fog * biomeFog);
+  motes.update(elapsed, camera.position, sky.state.motes, moteColor);
   windUniforms.uTime.value = elapsed;
 
   waterColor.copy(water.userData.baseColor).lerp(sky.state.skyHorizon, CONFIG.water.skyTint);

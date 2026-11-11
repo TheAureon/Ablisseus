@@ -4,7 +4,9 @@
 
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { heightAt, slopeAt, noise2, seededRandom, findDryLand } from './terrain.js';
+import { heightAt, slopeAt, findDryLand } from './terrain.js';
+import { noise2, seededRandom, smoothstep } from './noise.js';
+import { biomeWeights, biomeIndex } from './biomes.js';
 
 /** Shared wind clock — main.js advances `uTime.value` every frame. */
 export const windUniforms = { uTime: { value: 0 } };
@@ -42,12 +44,17 @@ function placeLayer(layer, index) {
   const [minS, maxS] = layer.scale ?? [1, 1];
   const matrices = [];
   const dummy = new THREE.Object3D();
+  const biome = layer.biome ? biomeIndex(layer.biome) : -1;
+  if (layer.biome && biome < 0) console.warn(`[scatter] Unknown biome "${layer.biome}"`);
 
-  for (let tries = 0; matrices.length < layer.count && tries < layer.count * 30; tries++) {
+  for (let tries = 0; matrices.length < layer.count && tries < layer.count * 120; tries++) {
     const r = Math.sqrt(rand()) * radius;
     const a = rand() * Math.PI * 2;
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
+
+    // Stay inside the layer's biome, thinning out toward its borders.
+    if (biome >= 0 && rand() > smoothstep(0.3, 0.65, biomeWeights(x, z)[biome])) continue;
 
     const y = heightAt(x, z);
     if (y < minH || y > maxH) continue;

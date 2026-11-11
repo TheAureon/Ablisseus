@@ -63,10 +63,11 @@ export function createMotes() {
   points.frustumCulled = false;
   points.name = 'motes';
 
-  function update(time, cameraPosition, intensity) {
+  function update(time, cameraPosition, intensity, color) {
     material.uniforms.uTime.value = time;
     material.uniforms.uCam.value.copy(cameraPosition);
     material.uniforms.uIntensity.value = intensity;
+    if (color) material.uniforms.uColor.value.copy(color);
   }
 
   return { object: points, update };

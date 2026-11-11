@@ -25,6 +25,21 @@ export const ASSETS = {
   rock:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.rock },
   grass:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.grass },
   flower: { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.flower },
+
+  // Biome variants — until you give them their own models they are recoloured placeholders.
+  pineSnow:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.pine('#35604a', '#eef3f6') },
+  treeAutumn:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.tree('#d2742c') },
+  treeGold:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.tree('#e0b23c') },
+  treeBlossom: { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.tree('#f3b3cf', '#5a4038') },
+  cactus:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.cactus },
+  bush:        { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.bush },
+  rockSand:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rock('#b99468') },
+  rockSnow:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rock('#c9d2d8') },
+  grassDark:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.grass('#33583a', '#6f9a5a') },
+  grassDry:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.grass('#9a7f3a', '#e3c873') },
+  grassPale:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.grass('#6f9f6a', '#cfe6b0') },
+  flowerPink:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.flower('#ffd3e6', '#ff7fb5') },
+
   beacon: { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.beacon },
   arch:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.arch },
   // Your own body, seen when looking down. See body.js for model requirements.

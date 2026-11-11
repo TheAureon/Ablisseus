@@ -12,42 +12,69 @@ function mesh(geometry, material, x = 0, y = 0, z = 0) {
   return m;
 }
 
-export function pine() {
+/** @param leaves foliage colour  @param top optional colour for the upper tiers (e.g. snow) */
+export function pine(leaves = '#2f5d3a', top = null) {
   const g = new THREE.Group();
-  const leaves = mat('#2f5d3a');
+  const low = mat(leaves);
+  const high = mat(top ?? leaves);
   g.add(mesh(new THREE.CylinderGeometry(0.12, 0.2, 1.6, 6), mat('#5b4332'), 0, 0.8, 0));
-  g.add(mesh(new THREE.ConeGeometry(1.5, 2.6, 7), leaves, 0, 2.4, 0));
-  g.add(mesh(new THREE.ConeGeometry(1.15, 2.2, 7), leaves, 0, 3.7, 0));
-  g.add(mesh(new THREE.ConeGeometry(0.75, 1.9, 7), leaves, 0, 4.9, 0));
+  g.add(mesh(new THREE.ConeGeometry(1.5, 2.6, 7), low, 0, 2.4, 0));
+  g.add(mesh(new THREE.ConeGeometry(1.15, 2.2, 7), high, 0, 3.7, 0));
+  g.add(mesh(new THREE.ConeGeometry(0.75, 1.9, 7), high, 0, 4.9, 0));
   return g;
 }
 
-export function tree() {
+export function tree(leaves = '#6f9a45', trunk = '#6a4f3a') {
   const g = new THREE.Group();
-  const leaves = mat('#6f9a45');
-  g.add(mesh(new THREE.CylinderGeometry(0.14, 0.24, 2.4, 6), mat('#6a4f3a'), 0, 1.2, 0));
-  g.add(mesh(new THREE.IcosahedronGeometry(1.6, 0), leaves, 0, 3.4, 0));
-  g.add(mesh(new THREE.IcosahedronGeometry(1.1, 0), leaves, 0.9, 2.9, 0.4));
-  g.add(mesh(new THREE.IcosahedronGeometry(1.0, 0), leaves, -0.8, 3.0, -0.5));
+  const canopy = mat(leaves);
+  g.add(mesh(new THREE.CylinderGeometry(0.14, 0.24, 2.4, 6), mat(trunk), 0, 1.2, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(1.6, 0), canopy, 0, 3.4, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(1.1, 0), canopy, 0.9, 2.9, 0.4));
+  g.add(mesh(new THREE.IcosahedronGeometry(1.0, 0), canopy, -0.8, 3.0, -0.5));
   return g;
 }
 
-export function rock() {
-  const m = mesh(new THREE.DodecahedronGeometry(0.7, 0), mat('#807b74'), 0, 0.3, 0);
+export function rock(color = '#807b74') {
+  const m = mesh(new THREE.DodecahedronGeometry(0.7, 0), mat(color), 0, 0.3, 0);
   m.scale.set(1.2, 0.7, 0.9);
   const g = new THREE.Group();
   g.add(m);
   return g;
 }
 
+export function cactus() {
+  const g = new THREE.Group();
+  const green = mat('#5f8a55');
+  g.add(mesh(new THREE.CylinderGeometry(0.22, 0.26, 2.6, 7), green, 0, 1.3, 0));
+  g.add(mesh(new THREE.SphereGeometry(0.22, 7, 5), green, 0, 2.6, 0));
+  for (const [side, y, h] of [[1, 1.2, 0.9], [-1, 1.6, 0.7]]) {
+    const elbow = mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.5, 6), green, side * 0.4, y, 0);
+    elbow.rotation.z = Math.PI / 2;
+    g.add(elbow);
+    g.add(mesh(new THREE.CylinderGeometry(0.13, 0.13, h, 6), green, side * 0.62, y + h / 2, 0));
+    g.add(mesh(new THREE.SphereGeometry(0.13, 6, 4), green, side * 0.62, y + h, 0));
+  }
+  return g;
+}
+
+/** A low scrubby shrub. */
+export function bush(color = '#8c8a52') {
+  const g = new THREE.Group();
+  const leaves = mat(color);
+  g.add(mesh(new THREE.IcosahedronGeometry(0.45, 0), leaves, 0, 0.3, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.32, 0), leaves, 0.35, 0.22, 0.1));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.28, 0), leaves, -0.3, 0.2, -0.15));
+  return g;
+}
+
 /** A tuft of a few flat blades, built as one geometry so it instances cheaply. */
-export function grass() {
+export function grass(baseColor = '#4f7f3c', tipColor = '#a9c66a') {
   const blades = 6;
   const positions = [];
   const normals = [];
   const colors = [];
-  const base = new THREE.Color('#4f7f3c');
-  const tip = new THREE.Color('#a9c66a');
+  const base = new THREE.Color(baseColor);
+  const tip = new THREE.Color(tipColor);
 
   for (let i = 0; i < blades; i++) {
     const angle = (i / blades) * Math.PI * 2 + i * 1.7;
@@ -77,10 +104,10 @@ export function grass() {
   return g;
 }
 
-export function flower() {
+export function flower(petals = '#f2e6ff', glow = '#b79cff') {
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.4, 4), mat('#5a8a3f'), 0, 0.2, 0));
-  g.add(mesh(new THREE.IcosahedronGeometry(0.07, 0), mat('#f2e6ff', { emissive: '#b79cff', emissiveIntensity: 0.35 }), 0, 0.43, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.07, 0), mat(petals, { emissive: glow, emissiveIntensity: 0.35 }), 0, 0.43, 0));
   return g;
 }
 

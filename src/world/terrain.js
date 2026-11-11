@@ -2,31 +2,9 @@
 // for ground height — the mesh, the props and the player all use it.
 
 import * as THREE from 'three';
-import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
 import { CONFIG } from '../config.js';
-
-/** Small deterministic random generator so a seed always gives the same world. */
-export function seededRandom(seed) {
-  let s = (seed * 2654435761) >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const heightNoise = new SimplexNoise({ random: seededRandom(CONFIG.seed) });
-const detailNoise = new SimplexNoise({ random: seededRandom(CONFIG.seed + 101) });
-
-/** General-purpose 2D noise in [-1, 1] (used for colour variation and prop clustering). */
-export const noise2 = (x, z) => detailNoise.noise(x, z);
-
-const smoothstep = (a, b, x) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
+import { heightNoise, noise2, smoothstep } from './noise.js';
+import { biomeWeights, blend, blendColor } from './biomes.js';
 
 export function heightAt(x, z) {
   const c = CONFIG.terrain;
@@ -43,7 +21,10 @@ export function heightAt(x, z) {
   n /= norm;
 
   const land = 1 - smoothstep(c.islandRadius * c.islandFalloffStart, c.islandRadius, Math.hypot(x, z));
-  return land * (c.baseHeight + n * c.amplitude) - (1 - land) * c.seabedDepth;
+  // Each biome reshapes the land: flatter, hillier, higher or lower.
+  const weights = biomeWeights(x, z);
+  const height = c.baseHeight + blend(weights, 'heightOffset', 0) + n * c.amplitude * blend(weights, 'heightScale', 1);
+  return land * height - (1 - land) * c.seabedDepth;
 }
 
 /** Steepness at a point: 0 = flat, 1 = a 45° slope. */
@@ -67,6 +48,7 @@ export function createTerrain() {
   const colors = new Float32Array(pos.count * 3);
   const normal = geo.attributes.normal;
   const out = new THREE.Color();
+  const alt = new THREE.Color();
   const water = CONFIG.water.level;
 
   for (let i = 0; i < pos.count; i++) {
@@ -75,8 +57,10 @@ export function createTerrain() {
     const z = pos.getZ(i);
     const steep = 1 - normal.getY(i);
 
-    out.copy(col.grass).lerp(col.grassAlt, noise2(x * 0.02, z * 0.02) * 0.5 + 0.5);
-    out.lerp(col.highland, smoothstep(c.highlandHeight - 4, c.highlandHeight + 4, y));
+    // Ground colour comes from the biomes here, with a little noise variation.
+    const weights = biomeWeights(x, z);
+    blendColor(weights, 'ground', out);
+    out.lerp(blendColor(weights, 'groundAlt', alt), noise2(x * 0.02, z * 0.02) * 0.5 + 0.5);
     out.lerp(col.sand, 1 - smoothstep(water + c.sandHeight * 0.5, water + c.sandHeight * 1.5, y));
     out.lerp(col.seabed, 1 - smoothstep(water - 3, water - 0.3, y));
     out.lerp(col.rock, smoothstep(c.rockSlope * 0.7, c.rockSlope * 1.3, steep));
