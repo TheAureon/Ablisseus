@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vite --open /dev.html",
+    "build": "vite build && node -e \"require('fs').copyFileSync('dist/dev.html','index.html')\"",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -13,6 +13,7 @@
     "three": "^0.187.0"
   },
   "devDependencies": {
-    "vite": "^8.3.8"
+    "vite": "^8.3.8",
+    "vite-plugin-singlefile": "^2.3.4"
   }
 }

@@ -2,7 +2,7 @@
 //  ASSET REGISTRY — swap placeholders for real models here.
 //
 //  To use your own model:
-//    1. Put the .glb / .gltf file in  /public/models/
+//    1. Put the .glb / .gltf file in  /models/
 //    2. Set `model` below, e.g.   pine: { model: 'models/pine.glb', ... }
 //
 //  While `model` is null (or fails to load) the placeholder shape is used.

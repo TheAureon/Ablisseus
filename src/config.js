@@ -128,7 +128,7 @@ export const CONFIG = {
   audio: {
     wind: true, // procedurally generated wind, no file needed
     windVolume: 0.12,
-    music: null, // e.g. 'audio/ambient.mp3' (put the file in /public/audio)
+    music: null, // e.g. 'audio/ambient.mp3' (put the file in /audio)
     musicVolume: 0.5,
   },
 
