@@ -106,3 +106,49 @@ export function arch() {
   g.add(mesh(new THREE.BoxGeometry(6, 0.9, 1.2), stone, 0, 5.4, 0));
   return g;
 }
+
+/**
+ * The player's body: headless, facing -Z, feet at the origin. Joints are
+ * named (legL, kneeL, armL, …) so body.js can animate them.
+ */
+export function body() {
+  const g = new THREE.Group();
+  const smooth = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+  const tunic = smooth('#7b6a58');
+  const trousers = smooth('#4a4f5c');
+  const boots = smooth('#3a2f28');
+  const skin = smooth('#d9b08c');
+
+  g.add(mesh(new THREE.BoxGeometry(0.38, 0.5, 0.22), tunic, 0, 1.2, 0));
+  g.add(mesh(new THREE.BoxGeometry(0.34, 0.18, 0.2), trousers, 0, 0.92, 0));
+
+  // A head that only casts a shadow, so your shadow isn't headless.
+  const head = mesh(new THREE.SphereGeometry(0.11, 12, 8), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), 0, 1.62, 0);
+  g.add(head);
+
+  for (const side of [-1, 1]) {
+    const suffix = side < 0 ? 'L' : 'R';
+
+    const leg = new THREE.Group(); // pivots at the hip
+    leg.name = 'leg' + suffix;
+    leg.position.set(side * 0.1, 0.92, 0);
+    leg.add(mesh(new THREE.CapsuleGeometry(0.075, 0.3, 4, 8), trousers, 0, -0.225, 0));
+
+    const knee = new THREE.Group();
+    knee.name = 'knee' + suffix;
+    knee.position.y = -0.45;
+    knee.add(mesh(new THREE.CapsuleGeometry(0.06, 0.28, 4, 8), trousers, 0, -0.2, 0));
+    knee.add(mesh(new THREE.BoxGeometry(0.11, 0.09, 0.27), boots, 0, -0.42, -0.06));
+    leg.add(knee);
+    g.add(leg);
+
+    const arm = new THREE.Group(); // pivots at the shoulder
+    arm.name = 'arm' + suffix;
+    arm.position.set(side * 0.25, 1.4, 0);
+    arm.rotation.z = side * 0.06;
+    arm.add(mesh(new THREE.CapsuleGeometry(0.05, 0.48, 4, 8), tunic, 0, -0.29, 0));
+    arm.add(mesh(new THREE.SphereGeometry(0.055, 10, 8), skin, 0, -0.63, 0));
+    g.add(arm);
+  }
+  return g;
+}

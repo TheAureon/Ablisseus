@@ -27,6 +27,8 @@ export const ASSETS = {
   flower: { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.flower },
   beacon: { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.beacon },
   arch:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.arch },
+  // Your own body, seen when looking down. See body.js for model requirements.
+  body:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.body },
 };
 
 /** Loads every asset and returns { name: THREE.Object3D } templates. */
@@ -37,9 +39,12 @@ export async function loadAssets() {
   await Promise.all(
     Object.entries(ASSETS).map(async ([name, def]) => {
       let object = null;
+      let animations = [];
       if (def.model) {
         try {
-          object = (await loader.loadAsync(def.model)).scene;
+          const gltf = await loader.loadAsync(def.model);
+          object = gltf.scene;
+          animations = gltf.animations;
         } catch (err) {
           console.warn(`[assets] Could not load "${def.model}" for "${name}" — using placeholder.`, err);
         }
@@ -52,6 +57,7 @@ export async function loadAssets() {
 
       const wrapper = new THREE.Group();
       wrapper.name = name;
+      wrapper.userData.animations = animations;
       wrapper.add(object);
       templates[name] = wrapper;
     }),

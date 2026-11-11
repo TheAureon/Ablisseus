@@ -40,6 +40,16 @@ export const CONFIG = {
     startYaw: 0.6, // initial facing, radians
   },
 
+  // Your own body, visible when you look down (model is set in assets.js).
+  body: {
+    enabled: true,
+    backOffset: 0.1, // how far the body sits behind the eyes
+    lookDownLean: 0.1, // eyes move forward as you look down, like craning your neck
+    legSwing: 0.5, // radians
+    kneeBend: 0.9,
+    armSwing: 0.32,
+  },
+
   // ── Terrain ───────────────────────────────────────────────────────────────
   terrain: {
     size: 700, // mesh width in metres

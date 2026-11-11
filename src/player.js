@@ -152,13 +152,23 @@ export function createPlayer(camera, canvas) {
 
     camera.position.set(position.x, position.y + c.eyeHeight + bob + breathe, position.z);
     camera.position.addScaledVector(right, sway);
+    // Crane forward when looking down so you see your feet, not your chest.
+    const crane = Math.max(0, -euler.x) * CONFIG.body.lookDownLean;
+    camera.position.x -= Math.sin(euler.y) * crane;
+    camera.position.z -= Math.cos(euler.y) * crane;
     camera.quaternion.setFromEuler(euler);
+
+    Object.assign(state, { yaw: euler.y, stride, moveAmount, hurry, speed, bob });
   }
+
+  /** Motion state for anything that follows the player (the body, for now). */
+  const state = { position, yaw: c.startYaw, stride: 0, moveAmount: 0, hurry: 0, speed: 0, bob: 0 };
 
   let onStep = null;
 
   return {
     position,
+    state,
     update,
     get fovOffset() {
       return fovOffset;

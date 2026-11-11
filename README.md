@@ -79,6 +79,7 @@ src/
   placeholders.js  stand-in shapes
   main.js          renderer, post-processing, frame loop, tweak panel
   player.js        first-person movement and input
+  body.js          your own body, seen when looking down
   audio.js         procedural wind + optional music
   world/
     terrain.js     island height function, terrain mesh, water

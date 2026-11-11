@@ -15,6 +15,7 @@ import { createScatter, createLandmarks, windUniforms } from './world/scatter.js
 import { createSky } from './world/sky.js';
 import { createMotes } from './world/motes.js';
 import { createPlayer } from './player.js';
+import { createBody } from './body.js';
 import { startAudio, playFootstep } from './audio.js';
 
 const canvas = document.getElementById('scene');
@@ -67,6 +68,8 @@ scene.add(motes.object);
 
 const player = createPlayer(camera, canvas);
 player.onStep = playFootstep;
+const body = createBody(templates.body);
+scene.add(body.object);
 
 // ── Start / pause ───────────────────────────────────────────────────────────
 overlayStatus.textContent = isTouch ? 'tap to wander' : 'click to wander';
@@ -96,6 +99,7 @@ if (CONFIG.debug.gui) {
   gui.add(live, 'fog', 0, 4, 0.05).name('fog amount');
   gui.add(CONFIG.player, 'walkSpeed', 1, 15, 0.1).name('walk speed');
   gui.add(CONFIG.player, 'sprintSpeed', 1, 40, 0.5).name('sprint speed');
+  gui.add(CONFIG.body, 'enabled').name('show body');
   gui.add(bloomCfg, 'enabled').name('bloom');
   gui.add(bloomCfg, 'strength', 0, 2, 0.01).name('bloom strength');
   gui.add(CONFIG.render, 'fov', 40, 100, 1).name('field of view');
@@ -120,6 +124,7 @@ renderer.setAnimationLoop(() => {
   if (!CONFIG.time.paused) live.time = (live.time + dt / CONFIG.time.dayLengthSeconds) % 1;
 
   player.update(dt);
+  body.update(dt, player.state);
   sky.update(live.time, camera.position, live.fog);
   motes.update(elapsed, camera.position, sky.state.motes);
   windUniforms.uTime.value = elapsed;
