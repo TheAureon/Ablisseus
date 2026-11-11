@@ -68,7 +68,10 @@ export function createPlayer(camera, canvas) {
     const t = touches.get(e.pointerId);
     if (t?.move) touchMove.set(0, 0);
     // A quick tap on the look side of the screen is a jump.
-    else if (t && performance.now() - t.time < 250 && Math.hypot(e.clientX - t.startX, e.clientY - t.startY) < 12) jumpBuffer = 0.15;
+    else if (t && performance.now() - t.time < 250 && Math.hypot(e.clientX - t.startX, e.clientY - t.startY) < 12) {
+      jumpBuffer = 0.15;
+      touchJump = true; // taps always get the full-height jump
+    }
     touches.delete(e.pointerId);
   };
   canvas.addEventListener('pointerup', endTouch);
@@ -87,10 +90,20 @@ export function createPlayer(camera, canvas) {
   let air = 0; // eased 0 on the ground … 1 mid-air, for the body pose
   let dip = 0; // landing knee-bend, a small damped spring
   let dipSpeed = 0;
+  let windup = 0; // time left in the pre-jump crouch
+  let recover = 0; // time after landing before you can jump again
+  let touchJump = false;
+  const MAX_STEP = 1 / 90;
 
   const ease = (rate, dt) => 1 - Math.exp(-rate * dt);
 
+  /** Advances the player. Long frames are split up so the motion stays stable at any frame rate. */
   function update(dt) {
+    const steps = Math.max(1, Math.ceil(dt / MAX_STEP));
+    for (let i = 0; i < steps; i++) step(dt / steps);
+  }
+
+  function step(dt) {
     time += dt;
 
     // ── Look: ease toward where the mouse has pointed ──
@@ -142,28 +155,54 @@ export function createPlayer(camera, canvas) {
 
     // ── Vertical: follow the ground, or fly through a jump ──
     const floor = heightAt(position.x, position.z);
-    if (airborne) {
-      verticalSpeed -= c.gravity * dt;
-      position.y += verticalSpeed * dt;
-      if (position.y <= floor) {
-        position.y = floor;
-        airborne = false;
-        dipSpeed += verticalSpeed * c.landingDip; // harder landings dip further
-        onStep?.(1, depth > 0.2);
-      }
-    } else if (jumpBuffer > 0 && c.jumpHeight > 0) {
+    const jumpHeld = held('jump') || touchJump;
+    let crouch = 0;
+
+    const launch = () => {
       verticalSpeed = Math.sqrt(2 * c.gravity * c.jumpHeight);
       airborne = true;
-      jumpBuffer = 0;
       onStep?.(0.7, depth > 0.2);
+    };
+
+    if (airborne) {
+      // Rising is floaty, falling is quicker, and letting go early cuts the hop short.
+      let gravity = c.gravity;
+      if (verticalSpeed < 0) gravity *= c.fallGravity;
+      else if (!jumpHeld) gravity *= c.jumpCutGravity;
+      verticalSpeed -= gravity * dt;
+      position.y += verticalSpeed * dt;
+
+      if (position.y <= floor) {
+        const impact = Math.min(1, -verticalSpeed / 8);
+        position.y = floor;
+        airborne = false;
+        touchJump = false;
+        dipSpeed += verticalSpeed * c.landingDip; // harder landings dip further
+        velocity.multiplyScalar(1 - c.landingSlowdown * impact); // and cost a little momentum
+        recover = c.jumpRecovery;
+        onStep?.(0.6 + impact * 0.4, depth > 0.2);
+      }
     } else {
       position.y += (floor - position.y) * ease(c.groundFollow, dt);
+
+      if (windup > 0) {
+        // Bend the knees for a moment, then push off.
+        crouch = c.jumpCrouch;
+        windup -= dt;
+        if (windup <= 0) launch();
+      } else if (jumpBuffer > 0 && recover <= 0 && c.jumpHeight > 0) {
+        jumpBuffer = 0;
+        windup = c.jumpWindup;
+        if (windup <= 0) launch();
+      }
     }
     jumpBuffer -= dt;
+    recover -= dt;
     air += ((airborne ? 1 : 0) - air) * ease(airborne ? 9 : 14, dt);
 
-    dipSpeed += (-140 * dip - 17 * dipSpeed) * dt;
-    dip += dipSpeed * dt;
+    // Knee spring: pulled down while crouching, kicked by landings, then settles.
+    dipSpeed += (-140 * (dip + crouch) - 17 * dipSpeed) * dt;
+    dip = THREE.MathUtils.clamp(dip + dipSpeed * dt, -0.35, 0.15);
 
     // ── Body motion ──
     const speed = velocity.length();
@@ -195,6 +234,7 @@ export function createPlayer(camera, canvas) {
     const crane = Math.max(0, -euler.x) * CONFIG.body.lookDownLean;
     camera.position.x -= Math.sin(euler.y) * crane;
     camera.position.z -= Math.cos(euler.y) * crane;
+    camera.position.y = Math.max(camera.position.y, floor + 0.3); // never sink into the ground
     camera.quaternion.setFromEuler(euler);
 
     Object.assign(state, { yaw: euler.y, stride, moveAmount, hurry, speed, bob: bob + dip, air });

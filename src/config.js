@@ -22,10 +22,16 @@ export const CONFIG = {
     wadeSlowdown: 0.45, // speed lost when knee-deep in water (0 = none)
 
     // Jumping
-    jumpHeight: 0.85, // metres (0 = no jumping)
-    gravity: 17, // higher = quicker, snappier hops
+    jumpHeight: 0.8, // metres when the key is held (0 = no jumping)
+    gravity: 14, // on the way up; lower = floatier
+    fallGravity: 1.5, // ×gravity on the way down, so you don't hang in the air
+    jumpCutGravity: 2.4, // ×gravity if you let go early — tap for a small hop
+    jumpWindup: 0.09, // seconds of knee-bend before leaving the ground (0 = instant)
+    jumpCrouch: 0.22, // how hard the knees pull down during the windup
+    jumpRecovery: 0.12, // seconds after landing before you can jump again
     airControl: 0.3, // how much you can steer mid-air (0..1)
-    landingDip: 0.11, // how much the knees give on landing
+    landingDip: 0.18, // how much the knees give on landing
+    landingSlowdown: 0.3, // momentum lost on a hard landing (0..1)
 
     // Looking
     lookSensitivity: 0.002,
