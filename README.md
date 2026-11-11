@@ -48,6 +48,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 |---|---|
 | Change any number: speeds, island size/shape, colours, prop counts, sky colours, fog, day length, bloom | `src/config.js` |
 | Add, remove or restyle a biome; choose what grows in it | `biomes` and `scatter` in `src/config.js` |
+| Trade looks for frame rate: resolution, draw distance, shadows, bloom | `render` in `src/config.js` |
 | Swap a placeholder for a real model | `src/assets.js` |
 | Change a placeholder shape | `src/placeholders.js` |
 | Add ambient music | `CONFIG.audio.music` in `src/config.js` |

@@ -124,38 +124,39 @@ export const CONFIG = {
   //   height: [min, max] allowed ground height   maxSlope: 0..1
   //   cluster: { scale, threshold } — noise mask; higher threshold = sparser groves
   //   sway: wind bend amount   colorJitter: per-instance tint variation
+  //   drawDistance: metres beyond which it is not drawn (big performance lever for grass)
   scatter: [
     // Meadow — open grass, flowers, the odd tree
-    { biome: 'meadow',  asset: 'grass',       count: 20000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.2], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.3 },
-    { biome: 'meadow',  asset: 'flower',      count: 1800,  height: [1.5, 20], maxSlope: 0.3,  scale: [0.7, 1.3], cluster: { scale: 0.02, threshold: 0.2 }, sway: 0.12, colorJitter: 0.1 },
+    { biome: 'meadow',  asset: 'grass',       count: 20000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.2], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.3, drawDistance: 150 },
+    { biome: 'meadow',  asset: 'flower',      count: 1800,  height: [1.5, 20], maxSlope: 0.3,  scale: [0.7, 1.3], cluster: { scale: 0.02, threshold: 0.2 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
     { biome: 'meadow',  asset: 'tree',        count: 150,   height: [1.5, 20], maxSlope: 0.35, scale: [0.8, 1.5], cluster: { scale: 0.010, threshold: 0.1 }, sway: 0.015, colorJitter: 0.25, castShadow: true },
-    { biome: 'meadow',  asset: 'rock',        count: 70,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 1.8], colorJitter: 0.2, castShadow: true, sink: 0.15 },
+    { biome: 'meadow',  asset: 'rock',        count: 70,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 1.8], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
 
     // Pinewood — dense dark conifers
     { biome: 'pines',   asset: 'pine',        count: 1300,  height: [2, 60],   maxSlope: 0.5,  scale: [0.8, 1.9], sway: 0.012, colorJitter: 0.25, castShadow: true },
-    { biome: 'pines',   asset: 'grassDark',   count: 9000,  height: [1.2, 40], maxSlope: 0.45, scale: [0.9, 1.8], cluster: { scale: 0.03, threshold: -0.2 }, sway: 0.2, colorJitter: 0.3 },
-    { biome: 'pines',   asset: 'rock',        count: 160,   height: [-1, 60],  maxSlope: 1.0,  scale: [0.5, 2.4], colorJitter: 0.2, castShadow: true, sink: 0.15 },
+    { biome: 'pines',   asset: 'grassDark',   count: 9000,  height: [1.2, 40], maxSlope: 0.45, scale: [0.9, 1.8], cluster: { scale: 0.03, threshold: -0.2 }, sway: 0.2, colorJitter: 0.3, drawDistance: 150 },
+    { biome: 'pines',   asset: 'rock',        count: 160,   height: [-1, 60],  maxSlope: 1.0,  scale: [0.5, 2.4], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
 
     // Emberwood — orange and gold broadleaf woods
     { biome: 'autumn',  asset: 'treeAutumn',  count: 420,   height: [1.5, 40], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.015, colorJitter: 0.3, castShadow: true },
     { biome: 'autumn',  asset: 'treeGold',    count: 260,   height: [1.5, 40], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.015, colorJitter: 0.2, castShadow: true },
-    { biome: 'autumn',  asset: 'grassDry',    count: 11000, height: [1.2, 40], maxSlope: 0.4,  scale: [0.9, 2.0], cluster: { scale: 0.03, threshold: -0.3 }, sway: 0.25, colorJitter: 0.25 },
-    { biome: 'autumn',  asset: 'rock',        count: 80,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 2.0], colorJitter: 0.2, castShadow: true, sink: 0.15 },
+    { biome: 'autumn',  asset: 'grassDry',    count: 11000, height: [1.2, 40], maxSlope: 0.4,  scale: [0.9, 2.0], cluster: { scale: 0.03, threshold: -0.3 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
+    { biome: 'autumn',  asset: 'rock',        count: 80,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 2.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
 
     // The Pale Dunes — sand, cacti, scrub
     { biome: 'desert',  asset: 'cactus',      count: 200,   height: [1.5, 30], maxSlope: 0.3,  scale: [0.7, 1.6], colorJitter: 0.2, castShadow: true },
-    { biome: 'desert',  asset: 'bush',        count: 600,   height: [1.2, 30], maxSlope: 0.4,  scale: [0.6, 1.5], cluster: { scale: 0.02, threshold: -0.1 }, colorJitter: 0.3, castShadow: true },
-    { biome: 'desert',  asset: 'rockSand',    count: 320,   height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 3.0], colorJitter: 0.2, castShadow: true, sink: 0.15 },
-    { biome: 'desert',  asset: 'grassDry',    count: 2500,  height: [1.2, 30], maxSlope: 0.4,  scale: [0.8, 1.6], cluster: { scale: 0.04, threshold: 0.3 }, sway: 0.25, colorJitter: 0.25 },
+    { biome: 'desert',  asset: 'bush',        count: 600,   height: [1.2, 30], maxSlope: 0.4,  scale: [0.6, 1.5], cluster: { scale: 0.02, threshold: -0.1 }, colorJitter: 0.3, castShadow: true, drawDistance: 320 },
+    { biome: 'desert',  asset: 'rockSand',    count: 320,   height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 3.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'desert',  asset: 'grassDry',    count: 2500,  height: [1.2, 30], maxSlope: 0.4,  scale: [0.8, 1.6], cluster: { scale: 0.04, threshold: 0.3 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
 
     // Whitereach — snowy heights
     { biome: 'snow',    asset: 'pineSnow',    count: 520,   height: [2, 80],   maxSlope: 0.5,  scale: [0.8, 1.8], cluster: { scale: 0.012, threshold: -0.1 }, sway: 0.01, colorJitter: 0.1, castShadow: true },
-    { biome: 'snow',    asset: 'rockSnow',    count: 300,   height: [-1, 90],  maxSlope: 1.2,  scale: [0.5, 3.0], colorJitter: 0.15, castShadow: true, sink: 0.15 },
+    { biome: 'snow',    asset: 'rockSnow',    count: 300,   height: [-1, 90],  maxSlope: 1.2,  scale: [0.5, 3.0], colorJitter: 0.15, castShadow: true, sink: 0.15, drawDistance: 420 },
 
     // Blossom Hollow — pink trees over soft pale grass
     { biome: 'blossom', asset: 'treeBlossom', count: 420,   height: [1.5, 30], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.02, colorJitter: 0.15, castShadow: true },
-    { biome: 'blossom', asset: 'grassPale',   count: 15000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.0], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.2 },
-    { biome: 'blossom', asset: 'flowerPink',  count: 2200,  height: [1.2, 30], maxSlope: 0.35, scale: [0.7, 1.4], cluster: { scale: 0.02, threshold: -0.1 }, sway: 0.12, colorJitter: 0.1 },
+    { biome: 'blossom', asset: 'grassPale',   count: 15000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.0], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.2, drawDistance: 150 },
+    { biome: 'blossom', asset: 'flowerPink',  count: 2200,  height: [1.2, 30], maxSlope: 0.35, scale: [0.7, 1.4], cluster: { scale: 0.02, threshold: -0.1 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
   ],
 
   // Unique hand-placed objects. position is [x, z]; y snaps to the ground.
@@ -211,7 +212,13 @@ export const CONFIG = {
   // ── Rendering ─────────────────────────────────────────────────────────────
   render: {
     fov: 65,
-    maxPixelRatio: 2, // lower to 1 for more performance
+maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = faster)
+    antialias: 4, // MSAA samples: 0, 2 or 4
+    // Automatically lowers the rendering resolution when the frame rate drops,
+    // and raises it again when there is headroom.
+    adaptive: { enabled: true, targetFps: 55, minScale: 0.55 },
+    chunkSize: 110, // props are culled in square chunks this many metres wide
+    drawDistanceScale: 1, // multiplies every scatter layer's drawDistance
     shadows: true,
     shadowMapSize: 2048,
     shadowDistance: 70, // radius around the player that receives shadows

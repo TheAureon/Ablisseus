@@ -12,7 +12,7 @@ import { CONFIG } from './config.js';
 import { loadAssets } from './assets.js';
 import { createTerrain, createWater } from './world/terrain.js';
 import { biomeWeights, blend, blendColor, dominant, biomeLabel } from './world/biomes.js';
-import { createScatter, createLandmarks, windUniforms } from './world/scatter.js';
+import { createScatter, createLandmarks, updateScatter, windUniforms } from './world/scatter.js';
 import { createSky } from './world/sky.js';
 import { createMotes } from './world/motes.js';
 import { createPlayer } from './player.js';
@@ -29,7 +29,8 @@ const isTouch = matchMedia('(pointer: coarse)').matches;
 
 // ── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, CONFIG.render.maxPixelRatio));
+const basePixelRatio = Math.min(devicePixelRatio, CONFIG.render.maxPixelRatio);
+renderer.setPixelRatio(basePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled = CONFIG.render.shadows;
@@ -42,7 +43,7 @@ const camera = new THREE.PerspectiveCamera(CONFIG.render.fov, innerWidth / inner
 const bloomCfg = CONFIG.render.bloom;
 const composer = new EffectComposer(
   renderer,
-  new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }),
+  new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: CONFIG.render.antialias }),
 );
 composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(innerWidth, innerHeight);
@@ -60,6 +61,7 @@ addEventListener('resize', () => {
 
 // ── World ───────────────────────────────────────────────────────────────────
 const live = { time: CONFIG.time.start, fog: 1 }; // values the tweak panel changes at runtime
+const adaptive = { scale: 1, frames: 0, seconds: 0, goodSeconds: 0, patience: 4, warmup: 3, steppedUp: false }; // resolution auto-scaling state
 
 const templates = await loadAssets();
 const water = createWater();
@@ -70,6 +72,10 @@ const motes = createMotes();
 scene.add(motes.object);
 
 const player = createPlayer(camera, canvas);
+
+// Compile every shader up front so the first steps don't stutter.
+updateScatter(camera.position);
+await renderer.compileAsync(scene, camera);
 player.onStep = playFootstep;
 const body = createBody(templates.body);
 scene.add(body.object);
@@ -107,6 +113,9 @@ if (CONFIG.debug.gui) {
   gui.add(bloomCfg, 'enabled').name('bloom');
   gui.add(bloomCfg, 'strength', 0, 2, 0.01).name('bloom strength');
   gui.add(CONFIG.render, 'fov', 40, 100, 1).name('field of view');
+  gui.add(CONFIG.render, 'drawDistanceScale', 0.3, 3, 0.05).name('draw distance');
+  gui.add(CONFIG.render.adaptive, 'enabled').name('auto resolution');
+  gui.add(adaptive, 'scale').name('resolution scale').listen().disable();
   gui.hide();
   addEventListener('keydown', (e) => {
     if (e.code === 'KeyG') gui.show(gui._hidden);
@@ -114,11 +123,50 @@ if (CONFIG.debug.gui) {
 }
 
 // Handy for poking at things from the browser console.
-window.TERRA = { CONFIG, scene, camera, player, live };
+window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive };
 
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
 const waterColor = new THREE.Color();
+
+// ── Adaptive resolution ─────────────────────────────────────────────────────
+// Once a second, compare the frame rate with the target. Too slow: render at a
+// lower resolution. Comfortably fast for a while: step back up. Each failed
+// step up makes the next attempt wait longer, so it settles instead of hunting.
+function adaptResolution(rawDt) {
+  const a = CONFIG.render.adaptive;
+  if (!a.enabled || document.hidden || rawDt > 2) return; // ignore the pause after switching tabs
+  if (adaptive.warmup > 0) return void (adaptive.warmup -= rawDt);
+  adaptive.frames++;
+  adaptive.seconds += rawDt;
+  if (adaptive.seconds < 1) return;
+  const fps = adaptive.frames / adaptive.seconds;
+  adaptive.frames = adaptive.seconds = 0;
+
+  let scale = adaptive.scale;
+  if (fps < a.targetFps - 7 && scale > a.minScale) {
+    scale = Math.max(a.minScale, scale - 0.15);
+    if (adaptive.steppedUp) adaptive.patience = Math.min(60, adaptive.patience * 2);
+    adaptive.steppedUp = false;
+    adaptive.goodSeconds = 0;
+  } else if (fps >= a.targetFps - 1 && scale < 1) {
+    if (++adaptive.goodSeconds >= adaptive.patience) {
+      scale = Math.min(1, scale + 0.15);
+      adaptive.steppedUp = true;
+      adaptive.goodSeconds = 0;
+    }
+  } else {
+    adaptive.goodSeconds = 0;
+    adaptive.steppedUp = false;
+  }
+
+  if (scale !== adaptive.scale) {
+    adaptive.scale = scale;
+    renderer.setPixelRatio(basePixelRatio * scale);
+    composer.setPixelRatio(basePixelRatio * scale);
+    composer.setSize(innerWidth, innerHeight);
+  }
+}
 const moteColor = new THREE.Color(CONFIG.motes.color);
 const moteTarget = new THREE.Color();
 let biomeFog = 1;
@@ -140,13 +188,16 @@ function announceBiome(index, weights) {
 
 renderer.setAnimationLoop(() => {
   timer.update();
-  const dt = Math.min(timer.getDelta(), 0.1);
+  const rawDt = timer.getDelta();
+  const dt = Math.min(rawDt, 0.1);
+  adaptResolution(rawDt);
   const elapsed = timer.getElapsed();
 
   if (!CONFIG.time.paused) live.time = (live.time + dt / CONFIG.time.dayLengthSeconds) % 1;
 
   player.update(dt);
   body.update(dt, player.state);
+  updateScatter(camera.position);
   // The biome you are standing in tints the air: fog thickness and mote colour.
   const weights = biomeWeights(player.position.x, player.position.z);
   biomeFog += (blend(weights, 'fog', 1) - biomeFog) * Math.min(1, dt * 0.8);

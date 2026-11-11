@@ -3,6 +3,7 @@
 // loaded models: every mesh inside an asset becomes one InstancedMesh.
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { heightAt, slopeAt, findDryLand } from './terrain.js';
 import { noise2, seededRandom, smoothstep } from './noise.js';
@@ -42,12 +43,12 @@ function placeLayer(layer, index) {
   const radius = CONFIG.terrain.islandRadius;
   const [minH, maxH] = layer.height ?? [-Infinity, Infinity];
   const [minS, maxS] = layer.scale ?? [1, 1];
-  const matrices = [];
+  const items = []; // { matrix, tint, x, z }
   const dummy = new THREE.Object3D();
   const biome = layer.biome ? biomeIndex(layer.biome) : -1;
   if (layer.biome && biome < 0) console.warn(`[scatter] Unknown biome "${layer.biome}"`);
 
-  for (let tries = 0; matrices.length < layer.count && tries < layer.count * 120; tries++) {
+  for (let tries = 0; items.length < layer.count && tries < layer.count * 120; tries++) {
     const r = Math.sqrt(rand()) * radius;
     const a = rand() * Math.PI * 2;
     const x = Math.cos(a) * r;
@@ -68,44 +69,95 @@ function placeLayer(layer, index) {
     dummy.rotation.set(0, rand() * Math.PI * 2, 0);
     dummy.scale.setScalar(minS + rand() * (maxS - minS));
     dummy.updateMatrix();
-    matrices.push(dummy.matrix.clone());
+    items.push({ matrix: dummy.matrix.clone(), tint: 1 - rand() * (layer.colorJitter ?? 0), x, z });
   }
-  return { matrices, rand };
+  return items;
 }
 
-function buildInstances(template, layer, matrices, rand) {
-  const group = new THREE.Group();
-  group.name = `scatter:${layer.asset}`;
+/**
+ * Flattens a template into as few { geometry, material } parts as possible:
+ * meshes that share a material are welded into one geometry, so a tree made
+ * of five shapes costs two draw calls instead of five.
+ */
+function flattenTemplate(template, layer) {
   template.updateMatrixWorld(true);
-
-  const tint = new THREE.Color();
-  const tints = matrices.map(() => 1 - rand() * (layer.colorJitter ?? 0));
-  const m = new THREE.Matrix4();
-
+  const byMaterial = new Map();
   template.traverse((child) => {
     if (!child.isMesh) return;
-    const material = layer.sway ? addSway(child.material, layer.sway) : child.material;
-    const inst = new THREE.InstancedMesh(child.geometry, material, matrices.length);
-    matrices.forEach((matrix, i) => {
-      inst.setMatrixAt(i, m.multiplyMatrices(matrix, child.matrixWorld));
-      if (layer.colorJitter) inst.setColorAt(i, tint.setScalar(tints[i]));
+    const geometry = (child.geometry.index ? child.geometry.toNonIndexed() : child.geometry.clone()).applyMatrix4(child.matrixWorld);
+    if (!byMaterial.has(child.material)) byMaterial.set(child.material, []);
+    byMaterial.get(child.material).push(geometry);
+  });
+
+  const parts = [];
+  for (const [source, geometries] of byMaterial) {
+    const material = layer.sway ? addSway(source, layer.sway) : source;
+    const merged = geometries.length > 1 ? mergeGeometries(geometries) : geometries[0];
+    // Geometries with mismatched attributes can't be welded; keep them separate.
+    for (const geometry of merged ? [merged] : geometries) parts.push({ geometry, material });
+  }
+  return parts;
+}
+
+/** One InstancedMesh per part, holding the given items. */
+function buildInstances(parts, layer, items) {
+  const group = new THREE.Group();
+  const tint = new THREE.Color();
+
+  for (const part of parts) {
+    const inst = new THREE.InstancedMesh(part.geometry, part.material, items.length);
+    items.forEach((item, i) => {
+      inst.setMatrixAt(i, item.matrix);
+      if (layer.colorJitter) inst.setColorAt(i, tint.setScalar(item.tint));
     });
     inst.castShadow = !!layer.castShadow;
     inst.receiveShadow = true;
     group.add(inst);
+  }
+  return group;
+}
+
+// Props are grouped into square chunks of land. A chunk is skipped entirely
+// when it is off-screen or further away than its layer's drawDistance, which
+// is what keeps the frame rate up with tens of thousands of grass tufts.
+const chunks = [];
+
+export function createScatter(templates) {
+  const group = new THREE.Group();
+  const size = CONFIG.render.chunkSize;
+
+  CONFIG.scatter.forEach((layer, index) => {
+    const template = templates[layer.asset];
+    if (!template) return console.warn(`[scatter] Unknown asset "${layer.asset}"`);
+    const parts = flattenTemplate(template, layer); // shared by every chunk of the layer
+
+    const cells = new Map();
+    for (const item of placeLayer(layer, index)) {
+      const key = Math.floor(item.x / size) + ',' + Math.floor(item.z / size);
+      if (!cells.has(key)) cells.set(key, []);
+      cells.get(key).push(item);
+    }
+
+    for (const [key, items] of cells) {
+      const [cx, cz] = key.split(',').map(Number);
+      const chunk = buildInstances(parts, layer, items);
+      chunk.name = `scatter:${layer.asset}`;
+      chunk.userData = { x: (cx + 0.5) * size, z: (cz + 0.5) * size, count: items.length, drawDistance: layer.drawDistance ?? Infinity };
+      chunks.push(chunk);
+      group.add(chunk);
+    }
   });
   return group;
 }
 
-export function createScatter(templates) {
-  const group = new THREE.Group();
-  CONFIG.scatter.forEach((layer, index) => {
-    const template = templates[layer.asset];
-    if (!template) return console.warn(`[scatter] Unknown asset "${layer.asset}"`);
-    const { matrices, rand } = placeLayer(layer, index);
-    group.add(buildInstances(template, layer, matrices, rand));
-  });
-  return group;
+/** Hides chunks beyond their draw distance. Call once per frame. */
+export function updateScatter(cameraPosition) {
+  const reach = CONFIG.render.chunkSize * 0.71; // half a chunk's diagonal
+  const scale = CONFIG.render.drawDistanceScale;
+  for (const chunk of chunks) {
+    const d = chunk.userData;
+    chunk.visible = Math.hypot(d.x - cameraPosition.x, d.z - cameraPosition.z) - reach < d.drawDistance * scale;
+  }
 }
 
 export function createLandmarks(templates) {

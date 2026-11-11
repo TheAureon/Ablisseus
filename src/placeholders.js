@@ -88,10 +88,17 @@ export function grass(baseColor = '#4f7f3c', tipColor = '#a9c66a') {
     const dx = Math.cos(facing) * w;
     const dz = Math.sin(facing) * w;
 
-    positions.push(cx - dx, 0, cz - dz, cx + dx, 0, cz + dz, cx + Math.cos(angle) * lean, h, cz + Math.sin(angle) * lean);
-    // Normals point straight up so tufts are lit evenly, like the ground.
-    normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
-    colors.push(base.r, base.g, base.b, base.r, base.g, base.b, tip.r, tip.g, tip.b);
+    const left = [cx - dx, 0, cz - dz];
+    const right = [cx + dx, 0, cz + dz];
+    const top = [cx + Math.cos(angle) * lean, h, cz + Math.sin(angle) * lean];
+    // Each blade is added twice, once facing each way, and every normal points
+    // straight up. That lights both sides evenly like the ground; a double-sided
+    // material would flip the normal on the back and turn half the blades black.
+    positions.push(...left, ...right, ...top, ...right, ...left, ...top);
+    for (let side = 0; side < 2; side++) {
+      normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
+      colors.push(base.r, base.g, base.b, base.r, base.g, base.b, tip.r, tip.g, tip.b);
+    }
   }
 
   const geo = new THREE.BufferGeometry();
@@ -100,7 +107,7 @@ export function grass(baseColor = '#4f7f3c', tipColor = '#a9c66a') {
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide })));
+  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })));
   return g;
 }
 
@@ -119,9 +126,8 @@ export function beacon() {
   g.add(mesh(new THREE.CylinderGeometry(1.3, 1.5, 0.4, 7), stone, 0, 0.1, 0));
   const glow = new THREE.MeshStandardMaterial({ color: '#000000', emissive: '#ffd9a0', emissiveIntensity: 4 });
   g.add(mesh(new THREE.IcosahedronGeometry(0.35, 1), glow, 0, 5.7, 0));
-  const light = new THREE.PointLight('#ffd9a0', 30, 30, 2);
-  light.position.set(0, 5.7, 0);
-  g.add(light);
+  // (No real light source here: every extra light makes the whole scene
+  // slower to draw. The glow comes from the emissive orb plus bloom.)
   return g;
 }
 
