@@ -38,8 +38,9 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Walk | `WASD` / arrow keys |
 | Look | mouse (click to capture, `Esc` to release) |
 | Hurry | `Shift` |
+| Jump | `Space` |
 | Tweak panel | `G` (press `Esc` first to free the mouse) |
-| Touch | drag left half of screen to walk, right half to look |
+| Touch | drag left half of screen to walk, right half to look, tap right half to jump |
 
 ## Where to change things
 

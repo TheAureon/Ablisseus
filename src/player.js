@@ -11,6 +11,7 @@ const KEYS = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   sprint: ['ShiftLeft', 'ShiftRight'],
+  jump: ['Space'],
 };
 
 export function createPlayer(camera, canvas) {
@@ -33,7 +34,13 @@ export function createPlayer(camera, canvas) {
   }
 
   // ── Keyboard & mouse ──
-  addEventListener('keydown', (e) => down.add(e.code));
+  addEventListener('keydown', (e) => {
+    down.add(e.code);
+    if (enabled && !e.repeat && KEYS.jump.includes(e.code)) {
+      jumpBuffer = 0.15; // remembered briefly so a press just before landing still counts
+      e.preventDefault();
+    }
+  });
   addEventListener('keyup', (e) => down.delete(e.code));
   addEventListener('blur', () => down.clear());
   document.addEventListener('mousemove', (e) => {
@@ -44,7 +51,7 @@ export function createPlayer(camera, canvas) {
   const touches = new Map();
   canvas.addEventListener('pointerdown', (e) => {
     if (e.pointerType !== 'touch') return;
-    touches.set(e.pointerId, { startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, move: e.clientX < innerWidth / 2 });
+    touches.set(e.pointerId, { startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, time: performance.now(), move: e.clientX < innerWidth / 2 });
   });
   canvas.addEventListener('pointermove', (e) => {
     const t = touches.get(e.pointerId);
@@ -58,7 +65,10 @@ export function createPlayer(camera, canvas) {
     t.y = e.clientY;
   });
   const endTouch = (e) => {
-    if (touches.get(e.pointerId)?.move) touchMove.set(0, 0);
+    const t = touches.get(e.pointerId);
+    if (t?.move) touchMove.set(0, 0);
+    // A quick tap on the look side of the screen is a jump.
+    else if (t && performance.now() - t.time < 250 && Math.hypot(e.clientX - t.startX, e.clientY - t.startY) < 12) jumpBuffer = 0.15;
     touches.delete(e.pointerId);
   };
   canvas.addEventListener('pointerup', endTouch);
@@ -71,6 +81,12 @@ export function createPlayer(camera, canvas) {
   let lean = 0;
   let time = 0;
   let fovOffset = 0;
+  let jumpBuffer = 0;
+  let airborne = false;
+  let verticalSpeed = 0;
+  let air = 0; // eased 0 on the ground … 1 mid-air, for the body pose
+  let dip = 0; // landing knee-bend, a small damped spring
+  let dipSpeed = 0;
 
   const ease = (rate, dt) => 1 - Math.exp(-rate * dt);
 
@@ -114,7 +130,7 @@ export function createPlayer(camera, canvas) {
 
     // Speeding up is gentler than slowing down.
     const speedingUp = target.lengthSq() > velocity.lengthSq();
-    velocity.lerp(target, ease(speedingUp ? c.acceleration : c.deceleration, dt));
+    velocity.lerp(target, ease((speedingUp ? c.acceleration : c.deceleration) * (airborne ? c.airControl : 1), dt));
 
     // Move each axis separately so we slide along shorelines instead of sticking.
     const nx = position.x + velocity.x * dt;
@@ -124,17 +140,40 @@ export function createPlayer(camera, canvas) {
     if (isWalkable(position.x, nz)) position.z = nz;
     else velocity.z = 0;
 
-    position.y += (heightAt(position.x, position.z) - position.y) * ease(c.groundFollow, dt);
+    // ── Vertical: follow the ground, or fly through a jump ──
+    const floor = heightAt(position.x, position.z);
+    if (airborne) {
+      verticalSpeed -= c.gravity * dt;
+      position.y += verticalSpeed * dt;
+      if (position.y <= floor) {
+        position.y = floor;
+        airborne = false;
+        dipSpeed += verticalSpeed * c.landingDip; // harder landings dip further
+        onStep?.(1, depth > 0.2);
+      }
+    } else if (jumpBuffer > 0 && c.jumpHeight > 0) {
+      verticalSpeed = Math.sqrt(2 * c.gravity * c.jumpHeight);
+      airborne = true;
+      jumpBuffer = 0;
+      onStep?.(0.7, depth > 0.2);
+    } else {
+      position.y += (floor - position.y) * ease(c.groundFollow, dt);
+    }
+    jumpBuffer -= dt;
+    air += ((airborne ? 1 : 0) - air) * ease(airborne ? 9 : 14, dt);
+
+    dipSpeed += (-140 * dip - 17 * dipSpeed) * dt;
+    dip += dipSpeed * dt;
 
     // ── Body motion ──
     const speed = velocity.length();
     const hurry = THREE.MathUtils.clamp((speed - c.walkSpeed) / (c.sprintSpeed - c.walkSpeed || 1), 0, 1);
-    moveAmount += (Math.min(1, speed / c.walkSpeed) - moveAmount) * ease(6, dt);
+    moveAmount += ((airborne ? 0 : Math.min(1, speed / c.walkSpeed)) - moveAmount) * ease(6, dt);
 
     const previousStride = stride;
-    stride += ((speed * dt) / (c.strideLength * (1 + hurry * 0.35))) * Math.PI * 2;
+    if (!airborne) stride += ((speed * dt) / (c.strideLength * (1 + hurry * 0.35))) * Math.PI * 2;
     // A foot lands twice per stride, at the bottom of each bob.
-    if (speed > 0.6 && Math.floor(stride / Math.PI) !== Math.floor(previousStride / Math.PI)) {
+    if (!airborne && speed > 0.6 && Math.floor(stride / Math.PI) !== Math.floor(previousStride / Math.PI)) {
       onStep?.(0.6 + hurry * 0.4, depth > 0.2);
     }
 
@@ -150,7 +189,7 @@ export function createPlayer(camera, canvas) {
 
     fovOffset += (hurry * c.sprintFov - fovOffset) * ease(3, dt);
 
-    camera.position.set(position.x, position.y + c.eyeHeight + bob + breathe, position.z);
+    camera.position.set(position.x, position.y + c.eyeHeight + bob + breathe + dip, position.z);
     camera.position.addScaledVector(right, sway);
     // Crane forward when looking down so you see your feet, not your chest.
     const crane = Math.max(0, -euler.x) * CONFIG.body.lookDownLean;
@@ -158,11 +197,11 @@ export function createPlayer(camera, canvas) {
     camera.position.z -= Math.cos(euler.y) * crane;
     camera.quaternion.setFromEuler(euler);
 
-    Object.assign(state, { yaw: euler.y, stride, moveAmount, hurry, speed, bob });
+    Object.assign(state, { yaw: euler.y, stride, moveAmount, hurry, speed, bob: bob + dip, air });
   }
 
   /** Motion state for anything that follows the player (the body, for now). */
-  const state = { position, yaw: c.startYaw, stride: 0, moveAmount: 0, hurry: 0, speed: 0, bob: 0 };
+  const state = { position, yaw: c.startYaw, stride: 0, moveAmount: 0, hurry: 0, speed: 0, bob: 0, air: 0 };
 
   let onStep = null;
 

@@ -21,6 +21,12 @@ export const CONFIG = {
     slopeEffect: 0.7, // uphill slows you, downhill speeds you up a little (0 = off)
     wadeSlowdown: 0.45, // speed lost when knee-deep in water (0 = none)
 
+    // Jumping
+    jumpHeight: 0.85, // metres (0 = no jumping)
+    gravity: 17, // higher = quicker, snappier hops
+    airControl: 0.3, // how much you can steer mid-air (0..1)
+    landingDip: 0.11, // how much the knees give on landing
+
     // Looking
     lookSensitivity: 0.002,
     lookSmoothing: 0.045, // seconds of easing on mouse look (0 = raw input)
@@ -48,6 +54,7 @@ export const CONFIG = {
     legSwing: 0.5, // radians
     kneeBend: 0.9,
     armSwing: 0.32,
+    airTuck: 0.45, // how much the legs tuck up mid-jump
   },
 
   // ── Terrain ───────────────────────────────────────────────────────────────

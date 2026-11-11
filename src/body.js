@@ -43,14 +43,17 @@ export function createBody(template) {
     const swing = Math.cos(state.stride) * amount;
     const lift = Math.sin(state.stride) * amount;
 
-    if (legL) legL.rotation.x = swing * c.legSwing;
-    if (legR) legR.rotation.x = -swing * c.legSwing;
+    // Mid-jump the legs tuck up and the arms lift a little.
+    const tuck = state.air * c.airTuck;
+
+    if (legL) legL.rotation.x = swing * c.legSwing + tuck;
+    if (legR) legR.rotation.x = -swing * c.legSwing + tuck * 0.6;
     // A knee bends while its leg is swinging forward.
-    if (kneeL) kneeL.rotation.x = -Math.max(0, -lift) * c.kneeBend;
-    if (kneeR) kneeR.rotation.x = -Math.max(0, lift) * c.kneeBend;
+    if (kneeL) kneeL.rotation.x = -Math.max(0, -lift) * c.kneeBend - tuck * 1.6;
+    if (kneeR) kneeR.rotation.x = -Math.max(0, lift) * c.kneeBend - tuck * 1.3;
     // Arms swing opposite to the leg on the same side.
-    if (armL) armL.rotation.x = -swing * c.armSwing;
-    if (armR) armR.rotation.x = swing * c.armSwing;
+    if (armL) armL.rotation.x = -swing * c.armSwing + tuck * 0.5;
+    if (armR) armR.rotation.x = swing * c.armSwing + tuck * 0.5;
 
     if (mixer) mixer.update(dt * (state.speed / CONFIG.player.walkSpeed));
   }
