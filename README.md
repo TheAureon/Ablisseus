@@ -92,8 +92,9 @@ src/
     landmarks.js   one large natural feature per biome, placed automatically
     trails.js      footpaths between camp and landmarks, plus lanterns, benches, camps
     campfire.js    flickering fires, embers and firelight
+    horizon.js     colossal far-off mountain ranges, for scale
     noise.js       seeded random + noise shared by the world
     scatter.js     instanced props + landmarks
-    sky.js         sky dome, sun/moon, fog, stars, time-of-day blending
+    sky.js         sky dome, sun/moon, clouds, Milky Way, aurora, planet, fog, time of day
     motes.js       drifting pollen / fireflies
 ```

@@ -64,7 +64,8 @@ export function createTerrain(pathTexture = null) {
     out.lerp(blendColor(weights, 'groundAlt', alt), noise2(x * 0.02, z * 0.02) * 0.5 + 0.5);
     out.lerp(col.sand, 1 - smoothstep(water + c.sandHeight * 0.5, water + c.sandHeight * 1.5, y));
     out.lerp(col.seabed, 1 - smoothstep(water - 3, water - 0.3, y));
-    out.lerp(col.rock, smoothstep(c.rockSlope * 0.7, c.rockSlope * 1.3, steep));
+    const rockSlope = c.rockSlope / blend(weights, 'rockiness', 1); // some biomes (snow) cling to steeper ground
+    out.lerp(col.rock, smoothstep(rockSlope * 0.7, rockSlope * 1.3, steep));
 
     colors[i * 3] = out.r;
     colors[i * 3 + 1] = out.g;
@@ -117,7 +118,7 @@ export function createTerrain(pathTexture = null) {
 export function createWater() {
   const w = CONFIG.water;
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(6000, 6000).rotateX(-Math.PI / 2),
+    new THREE.PlaneGeometry(20000, 20000).rotateX(-Math.PI / 2),
     new THREE.MeshStandardMaterial({
       color: w.color,
       transparent: true,
@@ -129,6 +130,15 @@ export function createWater() {
   mesh.position.y = w.level;
   mesh.name = 'water';
   mesh.userData.baseColor = new THREE.Color(w.color);
+
+  // A seabed stretching to the horizon, so the sea is the same colour beyond the
+  // island's own terrain as above it (otherwise the terrain's edge shows through).
+  const seabed = new THREE.Mesh(
+    new THREE.PlaneGeometry(20000, 20000).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: CONFIG.terrain.colors.seabed, roughness: 1 }),
+  );
+  seabed.position.y = -CONFIG.terrain.seabedDepth - 0.05;
+  mesh.add(seabed);
   return mesh;
 }
 

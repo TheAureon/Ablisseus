@@ -25,25 +25,31 @@ export function placeLandmarks() {
         console.warn(`[landmarks] Unknown biome "${lm.biome}"`);
         continue;
       }
-      let best = -Infinity;
-      for (let x = -reach; x <= reach; x += 12) {
-        for (let z = -reach; z <= reach; z += 12) {
-          if (Math.hypot(x, z) > reach) continue;
-          const weight = biomeWeights(x, z)[biome];
-          if (weight < 0.6) continue;
-          if (Math.hypot(x - sx, z - sz) < (lm.minSpawnDistance ?? 90)) continue;
-          if (placed.some((p) => Math.hypot(x - p.x, z - p.z) < 130)) continue;
-          const height = heightAt(x, z);
-          if (height < CONFIG.water.level + 2.5) continue;
-          const slope = slopeAt(x, z);
-          if (slope > 0.3) continue;
-          // Deep inside the biome, on gentle ground, ideally a little raised.
-          const score = weight * 2 - slope * 4 + Math.min(height, 25) * 0.015;
-          if (score > best) {
-            best = score;
-            spot = [x, z];
+      // Try gentle ground first; in rugged biomes settle for steeper.
+      for (const maxSlope of [0.3, 0.55, 0.9]) {
+        let best = -Infinity;
+        for (let x = -reach; x <= reach; x += 12) {
+          for (let z = -reach; z <= reach; z += 12) {
+            if (Math.hypot(x, z) > reach) continue;
+            const weight = biomeWeights(x, z)[biome];
+            if (weight < 0.6) continue;
+            if (Math.hypot(x - sx, z - sz) < (lm.minSpawnDistance ?? 90)) continue;
+            if (placed.some((p) => Math.hypot(x - p.x, z - p.z) < 130)) continue;
+            const height = heightAt(x, z);
+            if (height < CONFIG.water.level + 2.5) continue;
+            const slope = slopeAt(x, z);
+            if (slope > maxSlope) continue;
+            // Deep inside the biome, on gentle ground, ideally a little raised
+            // (or as high as possible for `prefer: 'summit'`).
+            const lift = lm.prefer === 'summit' ? height * 0.05 : Math.min(height, 25) * 0.015;
+            const score = weight * 2 - slope * 4 + lift;
+            if (score > best) {
+              best = score;
+              spot = [x, z];
+            }
           }
         }
+        if (spot) break;
       }
       if (!spot) {
         console.warn(`[landmarks] No room for "${lm.asset}" in biome "${lm.biome}"`);

@@ -103,6 +103,7 @@ export const CONFIG = {
   //   fog                – fog multiplier while you are inside it
   //   motes              – colour of the drifting specks in the air
   //   bias               – makes the biome more (+) or less (−) common, e.g. 0.2
+  //   rockiness          – below 1, steep slopes keep their ground colour instead of turning to bare rock
   //   wind/leaves/birds/crickets – how much of each sound you hear there (0 = none)
   //   footstep           – what the ground sounds like: 'grass', 'sand' or 'snow'
   biomes: {
@@ -115,7 +116,7 @@ export const CONFIG = {
       pines:   { label: 'Pinewood',        ground: '#3f6a44', groundAlt: '#557a4a', heightScale: 1.15, heightOffset: 2,   fog: 1.35, motes: '#d8f0c0', wind: 0.7, leaves: 1.0, birds: 0.6, crickets: 0.5, footstep: 'grass' },
       autumn:  { label: 'Emberwood',       ground: '#9a7b3c', groundAlt: '#b08a45', heightScale: 1.0,  heightOffset: 1,   fog: 1.15, motes: '#ffb870', wind: 0.8, leaves: 0.9, birds: 0.7, crickets: 0.7, footstep: 'grass' },
       desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08, wind: 1.2, leaves: 0.0, birds: 0.12, crickets: 0.5, footstep: 'sand' },
-      snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 1.7,  heightOffset: 7,   fog: 1.6,  motes: '#ffffff', bias: -0.08, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow' },
+      snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 2.3,  heightOffset: 44,  fog: 1.6,  motes: '#ffffff', bias: -0.08, rockiness: 0.5, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow' },
       blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd', wind: 0.6, leaves: 0.6, birds: 1.2, crickets: 0.9, footstep: 'grass' },
     },
   },
@@ -166,14 +167,33 @@ export const CONFIG = {
   // landmark finds its own spot deep inside that biome. Use `position: [x, z]`
   // instead to place one by hand. `radius` is its rough footprint in metres
   // (plants and the path keep clear of it); `label` shows as you arrive.
+  // `prefer: 'summit'` puts it as high up as it can find.
   landmarks: [
-    { asset: 'elderTree',     biome: 'meadow',  label: 'The Elder Tree',    radius: 6,  scale: 1 },
-    { asset: 'rockSpire',     biome: 'pines',   label: "The Giant's Tooth", radius: 7,  scale: 1 },
-    { asset: 'stoneCircle',   biome: 'autumn',  label: 'The Old Stones',    radius: 10, scale: 1 },
-    { asset: 'rockArch',      biome: 'desert',  label: 'The Sandgate',      radius: 11, scale: 1 },
-    { asset: 'iceCrown',      biome: 'snow',    label: 'The Frost Crown',   radius: 8,  scale: 1 },
-    { asset: 'motherBlossom', biome: 'blossom', label: 'The Mother Blossom', radius: 6, scale: 1 },
+    { asset: 'elderTree',     biome: 'meadow',  label: 'The Elder Tree',    radius: 6,  scale: 1.6 },
+    { asset: 'rockSpire',     biome: 'pines',   label: "The Giant's Tooth", radius: 7,  scale: 1.9 },
+    { asset: 'stoneCircle',   biome: 'autumn',  label: 'The Old Stones',    radius: 10, scale: 1.3 },
+    { asset: 'rockArch',      biome: 'desert',  label: 'The Sandgate',      radius: 11, scale: 1.5 },
+    { asset: 'iceCrown',      biome: 'snow',    label: 'The Frost Crown',   radius: 8, prefer: 'summit',  scale: 1.6 },
+    { asset: 'motherBlossom', biome: 'blossom', label: 'The Mother Blossom', radius: 6, scale: 1.5 },
   ],
+
+  // ── The far horizon ───────────────────────────────────────────────────────
+  // Colossal mountain ranges out at sea, purely for scale. Each range is a ring
+  // around the island: distance and height in metres, `gaps` 0..1 = how much of
+  // the ring is open sea, `haze` 0..1 = how far it fades into the sky colour.
+  horizon: {
+    enabled: true,
+    snowColor: '#eef2f6',
+    snowLine: 0.55, // fraction of a range's height where snow begins
+    ranges: [
+      { distance: 2400, height: 700,  gaps: 0.5,  haze: 0.22, color: '#56606e' },
+      { distance: 4200, height: 1500, gaps: 0.42, haze: 0.42, color: '#5d6878' },
+      { distance: 6800, height: 2700, gaps: 0.36, haze: 0.6,  color: '#667284' },
+    ],
+  },
+
+  // Air thins out as you climb: fog falls away with height, opening long views.
+  atmosphere: { clearHeight: 40 }, // metres of climb that halve the fog (0 = fog ignores height)
 
   // ── Trails ────────────────────────────────────────────────────────────────
   // Footpaths from the starting camp to every landmark, planned automatically
@@ -219,18 +239,23 @@ export const CONFIG = {
   sky: {
     sunTilt: 0.35, // how far the sun's arc leans off vertical
     keyframes: [
-      { t: 0.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0050, stars: 1.0, motes: 1.0, exposure: 1.35},
-      { t: 0.21, skyTop: '#0a0d24', skyHorizon: '#2a2c55', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0060, stars: 0.8, motes: 0.9, exposure: 1.35},
-      { t: 0.25, skyTop: '#2a3a78', skyHorizon: '#e58d6e', lightColor: '#ff9e6b', lightIntensity: 0.0,  ambientSky: '#6f6a9a', ambientGround: '#2a2230', ambientIntensity: 1.6,  fogDensity: 0.0075, stars: 0.15, motes: 0.4, exposure: 1.15},
-      { t: 0.30, skyTop: '#3d6cb8', skyHorizon: '#ffc79a', lightColor: '#ffc592', lightIntensity: 1.8,  ambientSky: '#9bb3d9', ambientGround: '#4a4034', ambientIntensity: 0.8,  fogDensity: 0.0065, stars: 0.0, motes: 0.25, exposure: 1.0 },
-      { t: 0.40, skyTop: '#3a82d4', skyHorizon: '#c4e2f2', lightColor: '#fff3dd', lightIntensity: 3.0,  ambientSky: '#b5d3f0', ambientGround: '#5a5a44', ambientIntensity: 0.9,  fogDensity: 0.0035, stars: 0.0, motes: 0.15, exposure: 1.0 },
-      { t: 0.60, skyTop: '#3a7fcf', skyHorizon: '#cfe3ea', lightColor: '#fff0d2', lightIntensity: 3.0,  ambientSky: '#b5d0ea', ambientGround: '#5a5a44', ambientIntensity: 0.9,  fogDensity: 0.0035, stars: 0.0, motes: 0.15, exposure: 1.0 },
-      { t: 0.70, skyTop: '#3f66b0', skyHorizon: '#ffcf9c', lightColor: '#ffbf85', lightIntensity: 2.2,  ambientSky: '#a7b4d6', ambientGround: '#4f4234', ambientIntensity: 0.8,  fogDensity: 0.0055, stars: 0.0, motes: 0.3, exposure: 1.0 },
-      { t: 0.75, skyTop: '#2b2f6e', skyHorizon: '#f07a52', lightColor: '#ff8a55', lightIntensity: 0.0,  ambientSky: '#77669a', ambientGround: '#2c2030', ambientIntensity: 1.6,  fogDensity: 0.0075, stars: 0.15, motes: 0.6, exposure: 1.15},
-      { t: 0.80, skyTop: '#0c0f2c', skyHorizon: '#3a2f5c', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0060, stars: 0.8, motes: 1.0, exposure: 1.35},
-      { t: 1.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0050, stars: 1.0, motes: 1.0, exposure: 1.35},
+      { t: 0.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0028, stars: 1.0, motes: 1.0, exposure: 1.35},
+      { t: 0.21, skyTop: '#0a0d24', skyHorizon: '#2a2c55', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0033, stars: 0.8, motes: 0.9, exposure: 1.35},
+      { t: 0.25, skyTop: '#2a3a78', skyHorizon: '#e58d6e', lightColor: '#ff9e6b', lightIntensity: 0.0,  ambientSky: '#6f6a9a', ambientGround: '#2a2230', ambientIntensity: 1.6,  fogDensity: 0.0041, stars: 0.15, motes: 0.4, exposure: 1.15},
+      { t: 0.30, skyTop: '#3d6cb8', skyHorizon: '#ffc79a', lightColor: '#ffc592', lightIntensity: 1.8,  ambientSky: '#9bb3d9', ambientGround: '#4a4034', ambientIntensity: 0.8,  fogDensity: 0.0036, stars: 0.0, motes: 0.25, exposure: 1.0 },
+      { t: 0.40, skyTop: '#3a82d4', skyHorizon: '#c4e2f2', lightColor: '#fff3dd', lightIntensity: 3.0,  ambientSky: '#b5d3f0', ambientGround: '#5a5a44', ambientIntensity: 0.9,  fogDensity: 0.0019, stars: 0.0, motes: 0.15, exposure: 1.0 },
+      { t: 0.60, skyTop: '#3a7fcf', skyHorizon: '#cfe3ea', lightColor: '#fff0d2', lightIntensity: 3.0,  ambientSky: '#b5d0ea', ambientGround: '#5a5a44', ambientIntensity: 0.9,  fogDensity: 0.0019, stars: 0.0, motes: 0.15, exposure: 1.0 },
+      { t: 0.70, skyTop: '#3f66b0', skyHorizon: '#ffcf9c', lightColor: '#ffbf85', lightIntensity: 2.2,  ambientSky: '#a7b4d6', ambientGround: '#4f4234', ambientIntensity: 0.8,  fogDensity: 0.0030, stars: 0.0, motes: 0.3, exposure: 1.0 },
+      { t: 0.75, skyTop: '#2b2f6e', skyHorizon: '#f07a52', lightColor: '#ff8a55', lightIntensity: 0.0,  ambientSky: '#77669a', ambientGround: '#2c2030', ambientIntensity: 1.6,  fogDensity: 0.0041, stars: 0.15, motes: 0.6, exposure: 1.15},
+      { t: 0.80, skyTop: '#0c0f2c', skyHorizon: '#3a2f5c', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0033, stars: 0.8, motes: 1.0, exposure: 1.35},
+      { t: 1.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0028, stars: 1.0, motes: 1.0, exposure: 1.35},
     ],
-    starCount: 1800,
+    starCount: 4500,
+    milkyWay: 0.6, // brightness of the band of stars across the night sky (0 = off)
+    clouds: { cover: 0.42 }, // 0 = clear sky … 1 = overcast
+    aurora: { strength: 0.12, inSnow: 0.7 }, // night aurora everywhere / while in the snow biome
+    // An immense pale world low in the sky, visible day and night.
+    planet: { enabled: true, direction: [-0.55, 0.3, -0.78], sizeDegrees: 11, colorA: '#c9b79c', colorB: '#8fa3c7' },
   },
 
   // Drifting specks of light — pollen by day, fireflies by night.
@@ -268,6 +293,8 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     birdVolume: 0.035,
     cricketVolume: 0.012,
     owlVolume: 0.03,
+    aweVolume: 0.05, // a deep, slow tone that swells on high ground and at landmarks
+    altitudeWind: 1.2, // extra wind at the top of the mountains
     footsteps: true, // soft synthesised footfalls
     footstepVolume: 0.1,
     music: null, // e.g. 'audio/ambient.mp3' (put the file in /audio)

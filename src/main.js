@@ -16,6 +16,7 @@ import { createScatter, createPlacedProps, updateScatter, windUniforms } from '.
 import { placeLandmarks, createLandmarks } from './world/landmarks.js';
 import { createTrails } from './world/trails.js';
 import { createCampfires } from './world/campfire.js';
+import { createHorizon } from './world/horizon.js';
 import { nightGlowMaterials } from './placeholders.js';
 import { createSky } from './world/sky.js';
 import { createMotes } from './world/motes.js';
@@ -41,7 +42,7 @@ renderer.shadowMap.enabled = CONFIG.render.shadows;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(CONFIG.render.fov, innerWidth / innerHeight, 0.1, 3000);
+const camera = new THREE.PerspectiveCamera(CONFIG.render.fov, innerWidth / innerHeight, 0.1, 12000);
 
 // ── Post-processing (bloom) ─────────────────────────────────────────────────
 const bloomCfg = CONFIG.render.bloom;
@@ -83,6 +84,8 @@ scene.add(campfires.object);
 
 
 const sky = createSky(scene);
+const horizon = createHorizon();
+scene.add(horizon.object);
 const motes = createMotes();
 scene.add(motes.object);
 
@@ -240,6 +243,13 @@ renderer.setAnimationLoop(() => {
   announceBiome(dominant(weights), weights);
   announceLandmark(player.position);
 
+  // Height above the sea: the air clears as you climb, and the view opens.
+  const altitude = Math.max(0, camera.position.y - CONFIG.player.eyeHeight - CONFIG.water.level);
+  const clear = CONFIG.atmosphere.clearHeight;
+  const thinAir = clear > 0 ? 1 / (1 + altitude / clear) : 1;
+  const snowIndex = biomeIndex('snow');
+  const aurora = THREE.MathUtils.lerp(CONFIG.sky.aurora.strength, CONFIG.sky.aurora.inSnow, snowIndex >= 0 ? weights[snowIndex] : 0);
+
   // Campfires, lanterns and the soundscape all follow where you are and the hour.
   const night = sky.state.stars ?? 0;
   const fireDistance = campfires.update(elapsed, player.position);
@@ -250,7 +260,7 @@ renderer.setAnimationLoop(() => {
     surroundings.water = waterNearness(player.position.x, player.position.z);
   }
   updateSoundscape(dt, {
-    wind: blend(weights, 'wind', 1),
+    wind: blend(weights, 'wind', 1) + THREE.MathUtils.smoothstep(altitude, 25, 80) * CONFIG.audio.altitudeWind,
     leaves: blend(weights, 'leaves', 0),
     birds: blend(weights, 'birds', 0),
     crickets: blend(weights, 'crickets', 0),
@@ -258,9 +268,11 @@ renderer.setAnimationLoop(() => {
     night,
     water: surroundings.water,
     fire: 1 - THREE.MathUtils.smoothstep(fireDistance, 2, 28),
+    awe: Math.max(THREE.MathUtils.smoothstep(altitude, 22, 70), currentLandmark ? 0.8 : 0),
   });
 
-  sky.update(live.time, camera.position, live.fog * biomeFog);
+  sky.update(live.time, camera.position, live.fog * biomeFog * thinAir, { time: elapsed, aurora });
+  horizon.update(sky.state, sky.lightDir);
   motes.update(elapsed, camera.position, sky.state.motes, moteColor);
   windUniforms.uTime.value = elapsed;
 

@@ -8,6 +8,7 @@
 //   birds     daytime song, busier in lush biomes
 //   crickets  at night
 //   owls      now and then at night in the woods
+//   awe       a deep slow tone on high ground and at landmarks
 //   footsteps change with the ground: grass, sand, snow, path, water
 //
 // Volumes are in CONFIG.audio; how lively each biome is lives on the biome
@@ -76,6 +77,26 @@ export function startAudio() {
   wobble(layers.water.filter.frequency, 0.16, 380); // waves washing in and out
 
   layers.fire = noiseLayer('lowpass', 210, 0.5);
+
+  // Awe: a very low, slowly breathing chord (root, fifth, octave) that you feel
+  // more than hear. It rises on high ground and near landmarks.
+  const awe = ctx.createGain();
+  awe.gain.value = 0;
+  const aweFilter = ctx.createBiquadFilter();
+  aweFilter.type = 'lowpass';
+  aweFilter.frequency.value = 420;
+  aweFilter.connect(awe).connect(master);
+  for (const [frequency, level] of [[55, 1], [55.4, 0.8], [82.4, 0.55], [110.3, 0.4], [164.8, 0.16], [220.6, 0.08]]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = frequency;
+    const voice = ctx.createGain();
+    voice.gain.value = level;
+    wobble(voice.gain, 0.03 + Math.random() * 0.06, level * 0.45); // each voice swells on its own slow cycle
+    osc.connect(voice).connect(aweFilter);
+    osc.start();
+  }
+  layers.awe = { gain: awe };
 
   if (c.music) {
     const music = new Audio(c.music);
@@ -161,6 +182,7 @@ function fireCrackle(t, volume) {
  *   water  — how close open water is
  *   fire   — how close a campfire is
  *   woods  — how wooded it is here (for owls)
+ *   awe    — how grand the moment is: high ground, or standing before a landmark
  */
 export function updateSoundscape(dt, env) {
   if (!ctx) return;
@@ -172,6 +194,7 @@ export function updateSoundscape(dt, env) {
   set(layers.leaves, c.leavesVolume * env.leaves);
   set(layers.water, c.waterVolume * env.water);
   set(layers.fire, c.fireVolume * env.fire * 0.7);
+  layers.awe.gain.gain.setTargetAtTime(c.aweVolume * (env.awe ?? 0), now, 3.5); // swells and fades slowly
 
   // Birds by day
   const birds = env.birds * (1 - env.night);
