@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
-import { heightAt, slopeAt, findDryLand, spawnPoint } from './terrain.js';
+import { heightAt, slopeAt, findDryLand, spawnPoint, addPad } from './terrain.js';
 import { biomeWeights, biomeIndex } from './biomes.js';
 import { flattenTemplate } from './scatter.js';
 
@@ -56,6 +56,8 @@ export function placeLandmarks() {
         continue;
       }
     }
+    const radius = (lm.radius ?? 8) * (lm.scale ?? 1);
+    addPad(spot[0], spot[1], radius + 4, 16); // a level clearing to stand in
     placed.push({
       asset: lm.asset,
       label: lm.label,
@@ -63,7 +65,7 @@ export function placeLandmarks() {
       z: spot[1],
       scale: lm.scale ?? 1,
       rotation: lm.rotation ?? 0,
-      radius: (lm.radius ?? 8) * (lm.scale ?? 1),
+      radius,
     });
   }
   return placed;

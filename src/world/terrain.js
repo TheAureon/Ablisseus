@@ -6,7 +6,8 @@ import { CONFIG } from '../config.js';
 import { heightNoise, noise2, smoothstep } from './noise.js';
 import { biomeWeights, blend, blendColor } from './biomes.js';
 
-export function heightAt(x, z) {
+/** The natural, unmodified ground height. */
+function naturalHeightAt(x, z) {
   const c = CONFIG.terrain;
   let n = 0;
   let amp = 1;
@@ -25,6 +26,74 @@ export function heightAt(x, z) {
   const weights = biomeWeights(x, z);
   const height = c.baseHeight + blend(weights, 'heightOffset', 0) + n * c.amplitude * blend(weights, 'heightScale', 1);
   return land * height - (1 - land) * c.seabedDepth;
+}
+
+// Pads: discs of levelled ground under camps and landmarks, so nothing sits
+// half-buried on a hillside. Each blends smoothly back into the natural slope.
+const pads = [];
+
+/** Levels the ground around (x, z). Must be called before the terrain mesh is built. */
+export function addPad(x, z, radius, blendWidth = 10) {
+  pads.push({ x, z, radius, blendWidth, height: naturalHeightAt(x, z) });
+}
+
+// Road beds: the ground under a path is cut level across its width, like a
+// real hillside track, and eased back into the slope either side. Samples are
+// kept in a coarse grid so looking one up costs almost nothing.
+const ROAD_CELL = 8;
+const roadCells = new Map();
+let roadWidth = 0;
+let roadReach = 0;
+const roadKey = (cx, cz) => cx * 8192 + cz;
+
+/**
+ * Cuts a level bed along a path. Must be called before the terrain mesh is built.
+ * @param samples [[x, z, height]] every couple of metres along the path
+ * @param width half-width of the level part   @param blendWidth distance over which it eases back into the hillside
+ */
+export function addRoadBed(samples, width, blendWidth) {
+  roadWidth = width;
+  roadReach = width + blendWidth;
+  for (const [x, z, h] of samples) {
+    const sample = { x, z, h };
+    for (let cx = Math.floor((x - roadReach) / ROAD_CELL); cx <= Math.floor((x + roadReach) / ROAD_CELL); cx++) {
+      for (let cz = Math.floor((z - roadReach) / ROAD_CELL); cz <= Math.floor((z + roadReach) / ROAD_CELL); cz++) {
+        const key = roadKey(cx, cz);
+        if (!roadCells.has(key)) roadCells.set(key, []);
+        roadCells.get(key).push(sample);
+      }
+    }
+  }
+}
+
+export { naturalHeightAt };
+
+/** Ground height — the single source of truth for the mesh, props and player. */
+export function heightAt(x, z) {
+  let height = naturalHeightAt(x, z);
+
+  // Level clearings first, then path beds on top, so a path keeps its own grade right up to a clearing.
+  for (const pad of pads) {
+    const d = Math.hypot(x - pad.x, z - pad.z);
+    if (d < pad.radius + pad.blendWidth) height = pad.height + (height - pad.height) * smoothstep(pad.radius, pad.radius + pad.blendWidth, d);
+  }
+
+  const nearby = roadCells.size ? roadCells.get(roadKey(Math.floor(x / ROAD_CELL), Math.floor(z / ROAD_CELL))) : null;
+  if (nearby) {
+    let strongest = 0;
+    let weightSum = 0;
+    let heightSum = 0;
+    for (const s of nearby) {
+      const d = Math.hypot(x - s.x, z - s.z);
+      if (d >= roadReach) continue;
+      const k = 1 - smoothstep(roadWidth, roadReach, d);
+      strongest = Math.max(strongest, k);
+      weightSum += k * k;
+      heightSum += k * k * s.h;
+    }
+    if (strongest > 0) height += (heightSum / weightSum - height) * strongest;
+  }
+  return height;
 }
 
 /** Steepness at a point: 0 = flat, 1 = a 45° slope. */
@@ -159,10 +228,29 @@ export function findDryLand(x, z) {
   return [x, z];
 }
 
-/** Where the player starts: CONFIG.player.spawn moved onto dry land. */
+/**
+ * Where the player starts: the nearest spot to CONFIG.player.spawn that is
+ * level, comfortably above the water and not right on a shore.
+ */
 let spawn = null;
 export function spawnPoint() {
-  return (spawn ??= findDryLand(CONFIG.player.spawn[0], CONFIG.player.spawn[1]));
+  if (spawn) return spawn;
+  const [sx, sz] = CONFIG.player.spawn;
+  const water = CONFIG.water.level;
+  for (let r = 0; r < CONFIG.terrain.islandRadius; r += 4) {
+    for (let a = 0; a < Math.PI * 2; a += r ? Math.min(0.5, 6 / r) : 7) {
+      const x = sx + Math.cos(a) * r;
+      const z = sz + Math.sin(a) * r;
+      if (heightAt(x, z) < water + 2.5 || slopeAt(x, z) > 0.12) continue;
+      let open = true;
+      for (let b = 0; b < Math.PI * 2 && open; b += Math.PI / 4) {
+        const h = heightAt(x + Math.cos(b) * 16, z + Math.sin(b) * 16);
+        if (h < water + 1.2 || Math.abs(h - heightAt(x, z)) > 4) open = false;
+      }
+      if (open) return (spawn = [x, z]);
+    }
+  }
+  return (spawn = findDryLand(sx, sz));
 }
 
 /** 0..1 — how close open water is (1 = at the water's edge). Used for sound. */

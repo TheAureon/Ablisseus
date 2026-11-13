@@ -248,7 +248,7 @@ export function campfire() {
 /** A log to sit on. */
 export function logSeat() {
   const g = new THREE.Group();
-  const log = mesh(new THREE.CylinderGeometry(0.24, 0.26, 1.9, 8), mat('#6b4d36'), 0, 0.24, 0);
+  const log = mesh(new THREE.CylinderGeometry(0.2, 0.22, 1.5, 8), mat('#6b4d36'), 0, 0.2, 0);
   log.rotation.z = Math.PI / 2;
   g.add(log);
   return g;
@@ -259,7 +259,7 @@ export function tent(color = '#c9b58e') {
   const g = new THREE.Group();
   const cloth = mat(color, { side: THREE.DoubleSide });
   // A three-sided prism laid on its side, one flat face on the ground.
-  const body = mesh(new THREE.CylinderGeometry(1.25, 1.25, 2.4, 3, 1, false), cloth, 0, 0.625, 0);
+  const body = mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.2, 3, 1, false), cloth, 0, 0.55, 0);
   body.rotation.order = 'ZYX';
   body.rotation.set(0, Math.PI / 2, Math.PI / 2);
   g.add(body);
@@ -279,16 +279,16 @@ export function bench() {
   return g;
 }
 
-/** A post with a hanging lantern that glows at night. */
+/** A lamp post: the light sits on top, so it looks the same from every side. */
 export function lantern() {
   const g = new THREE.Group();
   const wood = mat('#5d4532');
-  g.add(mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.5, 6), wood, 0, 1.25, 0));
-  g.add(mesh(new THREE.BoxGeometry(0.55, 0.07, 0.07), wood, 0.22, 2.42, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.06, 0.09, 2.3, 6), wood, 0, 1.15, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.17, 0.1, 0.08, 6), wood, 0, 2.32, 0));
   const glow = new THREE.MeshStandardMaterial({ color: '#3a2c18', emissive: '#ffc878', emissiveIntensity: 1 });
   nightGlowMaterials.push(glow);
-  g.add(mesh(new THREE.BoxGeometry(0.2, 0.28, 0.2), glow, 0.42, 2.2, 0));
-  g.add(mesh(new THREE.ConeGeometry(0.19, 0.12, 4), wood, 0.42, 2.4, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 6), glow, 0, 2.5, 0));
+  g.add(mesh(new THREE.ConeGeometry(0.22, 0.16, 6), wood, 0, 2.73, 0));
   return g;
 }
 

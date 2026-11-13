@@ -205,9 +205,15 @@ export const CONFIG = {
     color: '#8c7350', // trodden earth
     strength: 0.8, // how strongly the path shows over the ground colour (0..1)
     clearWidth: 9, // trees and rocks keep this far apart across the path
+    maxSlope: 0.32, // paths avoid hillsides steeper than this (0.32 ≈ 18°) unless there is no other way
+    maxClimb: 0.3, // and never rise more steeply than this along their own length (0.3 ≈ 17°)
+    // The ground under a path is cut level, like a real hillside track.
+    bed: { enabled: true, shoulder: 1, blend: 5, smoothing: 12, maxGrade: 0.3 }, // metres of level verge / of easing back into the slope; steepest rise along the path
     slopeAvoidance: 7, // higher = paths wind further to stay on gentle ground
+    parallelPenalty: 3, // discourages a new path from running alongside an existing one instead of joining it
+    mergeWithin: 70, // a side path shorter than this that just rejoins the main one is removed (metres)
     reuseDiscount: 0.35, // lower = routes merge into shared trunk paths more eagerly
-    loopReuseDiscount: 0.8, // same, for the landmark-to-landmark loop routes
+    loopReuseDiscount: 0.6, // same, for the landmark-to-landmark loop routes
     gridCell: 8, // planning resolution in metres
     lanternSpacing: 75, // metres between lanterns (make huge to remove them)
     campEvery: 2, // a wayside camp on every Nth route out from the start
