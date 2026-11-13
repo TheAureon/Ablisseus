@@ -266,19 +266,6 @@ export function tent(color = '#c9b58e') {
   return g;
 }
 
-/** A wooden bench. */
-export function bench() {
-  const g = new THREE.Group();
-  const wood = mat('#7a5a3e');
-  g.add(mesh(new THREE.BoxGeometry(1.7, 0.08, 0.45), wood, 0, 0.46, 0));
-  g.add(mesh(new THREE.BoxGeometry(1.7, 0.4, 0.07), wood, 0, 0.8, -0.22));
-  for (const x of [-0.7, 0.7]) {
-    g.add(mesh(new THREE.BoxGeometry(0.09, 0.46, 0.4), wood, x, 0.23, 0));
-    g.add(mesh(new THREE.BoxGeometry(0.07, 0.6, 0.07), wood, x, 0.7, -0.22));
-  }
-  return g;
-}
-
 /** A lamp post: the light sits on top, so it looks the same from every side. */
 export function lantern() {
   const g = new THREE.Group();

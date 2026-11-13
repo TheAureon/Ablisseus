@@ -1,6 +1,6 @@
 // Trails: footpaths that lead from the starting camp to every landmark and
-// loop between them, plus the furniture along the way (lanterns, benches,
-// signposts, camps). Everything here is planned automatically from the
+// loop between them, plus the furniture along the way (lanterns, signposts,
+// camps). Everything here is planned automatically from the
 // terrain, so it adapts when the island, biomes or landmarks change.
 //
 // How it works
@@ -354,7 +354,7 @@ export function createTrails(landmarks) {
   }
 
   // ── 3. Furniture ──────────────────────────────────────────────────────────
-  const props = { lantern: [], bench: [], signpost: [], logSeat: [], tent: [] };
+  const props = { lantern: [], signpost: [], logSeat: [], tent: [] };
   const campfires = [];
   const spurs = []; // short side paths from the trail to a camp
 
@@ -455,11 +455,10 @@ export function createTrails(landmarks) {
     spurs.push([join, [(join[0] + spot[0]) / 2, (join[1] + spot[1]) / 2], spot]);
   });
 
-  // A bench and a signpost where each trail reaches its landmark.
+  // A signpost where each trail reaches its landmark.
   for (const stop of stops) {
     const dx = (stop.lm.x - stop.x) / (stop.lm.radius + 2);
     const dz = (stop.lm.z - stop.z) / (stop.lm.radius + 2);
-    props.bench.push({ x: stop.x - dz * 3.4, z: stop.z + dx * 3.4, rotation: Math.atan2(dx, dz) }); // faces the landmark
     props.signpost.push({ x: stop.x + dz * 2.8, z: stop.z - dx * 2.8, rotation: Math.atan2(dx, dz) });
   }
 

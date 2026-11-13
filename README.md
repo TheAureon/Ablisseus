@@ -90,7 +90,7 @@ src/
     terrain.js     island height function, terrain mesh, water
     biomes.js      regions with their own ground, terrain shape and mood
     landmarks.js   one large natural feature per biome, placed automatically
-    trails.js      footpaths between camp and landmarks, plus lanterns, benches, camps
+    trails.js      footpaths between camp and landmarks, plus lanterns, signposts, camps
     campfire.js    flickering fires, embers and firelight
     horizon.js     colossal far-off mountain ranges, for scale
     noise.js       seeded random + noise shared by the world

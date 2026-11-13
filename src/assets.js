@@ -52,7 +52,6 @@ export const ASSETS = {
   campfire:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.campfire },
   logSeat:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.logSeat },
   tent:         { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.tent },
-  bench:        { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.bench },
   lantern:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.lantern },
   signpost:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.signpost },
 

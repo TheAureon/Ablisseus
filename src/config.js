@@ -197,7 +197,7 @@ export const CONFIG = {
 
   // ── Trails ────────────────────────────────────────────────────────────────
   // Footpaths from the starting camp to every landmark, planned automatically
-  // around water and steep ground, with lanterns, benches, signposts and camps.
+  // around water and steep ground, with lanterns, signposts and camps.
   trails: {
     enabled: true,
     loop: true, // also link the landmarks to each other, making round walks
