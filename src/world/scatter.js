@@ -1,11 +1,10 @@
-// Scatters instanced props over the terrain (CONFIG.scatter) and places
-// one-off landmarks (CONFIG.landmarks). Works the same for placeholders and
+// Scatters instanced props over the terrain (CONFIG.scatter). Works the same for placeholders and
 // loaded models: every mesh inside an asset becomes one InstancedMesh.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
-import { heightAt, slopeAt, findDryLand } from './terrain.js';
+import { heightAt, slopeAt } from './terrain.js';
 import { noise2, seededRandom, smoothstep } from './noise.js';
 import { biomeWeights, biomeIndex } from './biomes.js';
 
@@ -38,7 +37,7 @@ function addSway(material, amount) {
 }
 
 /** Picks instance transforms for one scatter layer. */
-function placeLayer(layer, index) {
+function placeLayer(layer, index, trails) {
   const rand = seededRandom(CONFIG.seed * 31 + index * 977 + 5);
   const radius = CONFIG.terrain.islandRadius;
   const [minH, maxH] = layer.height ?? [-Infinity, Infinity];
@@ -56,6 +55,10 @@ function placeLayer(layer, index) {
 
     // Stay inside the layer's biome, thinning out toward its borders.
     if (biome >= 0 && rand() > smoothstep(0.3, 0.65, biomeWeights(x, z)[biome])) continue;
+
+    // Keep trails, camps and landmarks clear: nothing on the path itself, and
+    // nothing tall close beside it.
+    if (trails && (layer.castShadow ? trails.clearanceAt(x, z) : trails.pathAt(x, z)) > 0.25) continue;
 
     const y = heightAt(x, z);
     if (y < minH || y > maxH) continue;
@@ -79,7 +82,7 @@ function placeLayer(layer, index) {
  * meshes that share a material are welded into one geometry, so a tree made
  * of five shapes costs two draw calls instead of five.
  */
-function flattenTemplate(template, layer) {
+export function flattenTemplate(template, layer = {}) {
   template.updateMatrixWorld(true);
   const byMaterial = new Map();
   template.traverse((child) => {
@@ -122,7 +125,7 @@ function buildInstances(parts, layer, items) {
 // is what keeps the frame rate up with tens of thousands of grass tufts.
 const chunks = [];
 
-export function createScatter(templates) {
+export function createScatter(templates, trails) {
   const group = new THREE.Group();
   const size = CONFIG.render.chunkSize;
 
@@ -132,7 +135,7 @@ export function createScatter(templates) {
     const parts = flattenTemplate(template, layer); // shared by every chunk of the layer
 
     const cells = new Map();
-    for (const item of placeLayer(layer, index)) {
+    for (const item of placeLayer(layer, index, trails)) {
       const key = Math.floor(item.x / size) + ',' + Math.floor(item.z / size);
       if (!cells.has(key)) cells.set(key, []);
       cells.get(key).push(item);
@@ -160,23 +163,35 @@ export function updateScatter(cameraPosition) {
   }
 }
 
-export function createLandmarks(templates) {
+/**
+ * Instances hand-placed props (trail furniture) through the same chunked,
+ * culled path as the scatter layers.
+ * @param placements [{ x, z, rotation, scale }] — y snaps to the ground
+ */
+export function createPlacedProps(template, name, placements, options = {}) {
   const group = new THREE.Group();
-  for (const lm of CONFIG.landmarks) {
-    const template = templates[lm.asset];
-    if (!template) {
-      console.warn(`[landmarks] Unknown asset "${lm.asset}"`);
-      continue;
-    }
-    const [x, z] = findDryLand(lm.position[0], lm.position[1]);
-    const obj = template.clone();
-    obj.position.set(x, heightAt(x, z), z);
-    obj.rotation.y = lm.rotation ?? 0;
-    obj.scale.setScalar(lm.scale ?? 1);
-    obj.traverse((c) => {
-      if (c.isMesh) c.castShadow = c.receiveShadow = true;
-    });
-    group.add(obj);
+  const size = CONFIG.render.chunkSize;
+  const layer = { castShadow: options.castShadow ?? true };
+  const parts = flattenTemplate(template, layer);
+  const dummy = new THREE.Object3D();
+
+  const cells = new Map();
+  for (const p of placements) {
+    dummy.position.set(p.x, heightAt(p.x, p.z), p.z);
+    dummy.rotation.set(0, p.rotation ?? 0, 0);
+    dummy.scale.setScalar(p.scale ?? 1);
+    dummy.updateMatrix();
+    const key = Math.floor(p.x / size) + ',' + Math.floor(p.z / size);
+    if (!cells.has(key)) cells.set(key, []);
+    cells.get(key).push({ matrix: dummy.matrix.clone(), tint: 1 });
+  }
+  for (const [key, items] of cells) {
+    const [cx, cz] = key.split(',').map(Number);
+    const chunk = buildInstances(parts, layer, items);
+    chunk.name = `prop:${name}`;
+    chunk.userData = { x: (cx + 0.5) * size, z: (cz + 0.5) * size, count: items.length, drawDistance: options.drawDistance ?? Infinity };
+    chunks.push(chunk);
+    group.add(chunk);
   }
   return group;
 }

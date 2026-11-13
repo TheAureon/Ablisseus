@@ -48,6 +48,8 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 |---|---|
 | Change any number: speeds, island size/shape, colours, prop counts, sky colours, fog, day length, bloom | `src/config.js` |
 | Add, remove or restyle a biome; choose what grows in it | `biomes` and `scatter` in `src/config.js` |
+| Change landmarks, footpaths, lanterns, camps | `landmarks`, `trails`, `campfire` in `src/config.js` |
+| Change sound volumes, or how lively each biome sounds | `audio` and each biome's `wind/leaves/birds/crickets` in `src/config.js` |
 | Trade looks for frame rate: resolution, draw distance, shadows, bloom | `render` in `src/config.js` |
 | Swap a placeholder for a real model | `src/assets.js` |
 | Change a placeholder shape | `src/placeholders.js` |
@@ -83,10 +85,13 @@ src/
   main.js          renderer, post-processing, frame loop, tweak panel
   player.js        first-person movement and input
   body.js          your own body, seen when looking down
-  audio.js         procedural wind + optional music
+  audio.js         synthesised soundscape: wind, leaves, water, fire, birds, crickets, footsteps
   world/
     terrain.js     island height function, terrain mesh, water
     biomes.js      regions with their own ground, terrain shape and mood
+    landmarks.js   one large natural feature per biome, placed automatically
+    trails.js      footpaths between camp and landmarks, plus lanterns, benches, camps
+    campfire.js    flickering fires, embers and firelight
     noise.js       seeded random + noise shared by the world
     scatter.js     instanced props + landmarks
     sky.js         sky dome, sun/moon, fog, stars, time-of-day blending

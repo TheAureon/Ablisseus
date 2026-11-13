@@ -10,14 +10,18 @@ import GUI from 'lil-gui';
 
 import { CONFIG } from './config.js';
 import { loadAssets } from './assets.js';
-import { createTerrain, createWater } from './world/terrain.js';
-import { biomeWeights, blend, blendColor, dominant, biomeLabel } from './world/biomes.js';
-import { createScatter, createLandmarks, updateScatter, windUniforms } from './world/scatter.js';
+import { createTerrain, createWater, waterNearness } from './world/terrain.js';
+import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOME_NAMES } from './world/biomes.js';
+import { createScatter, createPlacedProps, updateScatter, windUniforms } from './world/scatter.js';
+import { placeLandmarks, createLandmarks } from './world/landmarks.js';
+import { createTrails } from './world/trails.js';
+import { createCampfires } from './world/campfire.js';
+import { nightGlowMaterials } from './placeholders.js';
 import { createSky } from './world/sky.js';
 import { createMotes } from './world/motes.js';
 import { createPlayer } from './player.js';
 import { createBody } from './body.js';
-import { startAudio, playFootstep } from './audio.js';
+import { startAudio, playFootstep, updateSoundscape } from './audio.js';
 
 const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
@@ -65,7 +69,18 @@ const adaptive = { scale: 1, frames: 0, seconds: 0, goodSeconds: 0, patience: 4,
 
 const templates = await loadAssets();
 const water = createWater();
-scene.add(createTerrain(), water, createScatter(templates), createLandmarks(templates));
+
+// Landmarks choose their spots first, trails are planned between them, and
+// only then is everything else grown around the paths.
+const landmarks = placeLandmarks();
+const trails = createTrails(landmarks);
+scene.add(createTerrain(trails.texture), water, createScatter(templates, trails), createLandmarks(templates, landmarks));
+for (const [asset, placements] of Object.entries(trails.props)) {
+  if (placements.length) scene.add(createPlacedProps(templates[asset], asset, placements, { drawDistance: 380 }));
+}
+const campfires = createCampfires(templates.campfire, trails.campfires);
+scene.add(campfires.object);
+
 
 const sky = createSky(scene);
 const motes = createMotes();
@@ -76,7 +91,12 @@ const player = createPlayer(camera, canvas);
 // Compile every shader up front so the first steps don't stutter.
 updateScatter(camera.position);
 await renderer.compileAsync(scene, camera);
-player.onStep = playFootstep;
+// Footsteps sound like whatever is underfoot.
+player.onStep = (strength, inWater) => {
+  const { x, z } = player.position;
+  const surface = inWater ? 'water' : trails.pathAt(x, z) > 0.4 ? 'path' : CONFIG.biomes.types[BIOME_NAMES[currentBiome]]?.footstep ?? 'grass';
+  playFootstep(strength, surface);
+};
 const body = createBody(templates.body);
 scene.add(body.object);
 
@@ -123,7 +143,7 @@ if (CONFIG.debug.gui) {
 }
 
 // Handy for poking at things from the browser console.
-window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive };
+window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks };
 
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
@@ -171,20 +191,35 @@ const moteColor = new THREE.Color(CONFIG.motes.color);
 const moteTarget = new THREE.Color();
 let biomeFog = 1;
 
-// Shows a region's name for a few seconds when you walk well into it.
-const biomeText = document.getElementById('biome');
+// Shows a place name for a few seconds: a biome as you walk well into it, a
+// landmark as you reach it.
+const placeText = document.getElementById('biome');
 let currentBiome = -1;
-let biomeTimer = null;
+let currentLandmark = null;
+let placeTimer = null;
+function announce(text) {
+  if (!CONFIG.ui.biomeLabel || !text) return;
+  placeText.textContent = text;
+  placeText.classList.add('show');
+  clearTimeout(placeTimer);
+  placeTimer = setTimeout(() => placeText.classList.remove('show'), 4500);
+}
 function announceBiome(index, weights) {
   if (index === currentBiome || weights[index] < 0.7) return;
   const first = currentBiome < 0;
   currentBiome = index;
-  if (first || !CONFIG.ui.biomeLabel) return; // no announcement for where you start
-  biomeText.textContent = biomeLabel(index);
-  biomeText.classList.add('show');
-  clearTimeout(biomeTimer);
-  biomeTimer = setTimeout(() => biomeText.classList.remove('show'), 4500);
+  if (!first) announce(biomeLabel(index)); // no announcement for where you start
 }
+function announceLandmark(position) {
+  const near = landmarks.find((lm) => Math.hypot(lm.x - position.x, lm.z - position.z) < lm.radius + 22);
+  if (near && near !== currentLandmark) announce(near.label);
+  if (near || !currentLandmark || Math.hypot(currentLandmark.x - position.x, currentLandmark.z - position.z) > 90) currentLandmark = near ?? null;
+}
+
+// Surroundings that are a little costly to work out are refreshed a few times a second.
+const woodedBiomes = ['pines', 'autumn'].map(biomeIndex).filter((i) => i >= 0);
+const surroundings = { water: 0, timer: 0 };
+const frameWeights = new Float32Array(BIOME_NAMES.length); // this frame's biome mix, kept separate from the shared scratch array
 
 renderer.setAnimationLoop(() => {
   timer.update();
@@ -199,10 +234,31 @@ renderer.setAnimationLoop(() => {
   body.update(dt, player.state);
   updateScatter(camera.position);
   // The biome you are standing in tints the air: fog thickness and mote colour.
-  const weights = biomeWeights(player.position.x, player.position.z);
+  const weights = biomeWeights(player.position.x, player.position.z, frameWeights);
   biomeFog += (blend(weights, 'fog', 1) - biomeFog) * Math.min(1, dt * 0.8);
   moteColor.lerp(blendColor(weights, 'motes', moteTarget, CONFIG.motes.color), Math.min(1, dt * 0.8));
   announceBiome(dominant(weights), weights);
+  announceLandmark(player.position);
+
+  // Campfires, lanterns and the soundscape all follow where you are and the hour.
+  const night = sky.state.stars ?? 0;
+  const fireDistance = campfires.update(elapsed, player.position);
+  for (const material of nightGlowMaterials) material.emissiveIntensity = THREE.MathUtils.lerp(CONFIG.lanterns.dayGlow, CONFIG.lanterns.nightGlow, night);
+  surroundings.timer -= dt;
+  if (surroundings.timer <= 0) {
+    surroundings.timer = 0.25;
+    surroundings.water = waterNearness(player.position.x, player.position.z);
+  }
+  updateSoundscape(dt, {
+    wind: blend(weights, 'wind', 1),
+    leaves: blend(weights, 'leaves', 0),
+    birds: blend(weights, 'birds', 0),
+    crickets: blend(weights, 'crickets', 0),
+    woods: woodedBiomes.reduce((sum, i) => sum + weights[i], 0),
+    night,
+    water: surroundings.water,
+    fire: 1 - THREE.MathUtils.smoothstep(fireDistance, 2, 28),
+  });
 
   sky.update(live.time, camera.position, live.fog * biomeFog);
   motes.update(elapsed, camera.position, sky.state.motes, moteColor);

@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
-import { heightAt, isWalkable, findDryLand } from './world/terrain.js';
+import { heightAt, isWalkable, spawnPoint } from './world/terrain.js';
 
 const KEYS = {
   forward: ['KeyW', 'ArrowUp'],
@@ -16,7 +16,7 @@ const KEYS = {
 
 export function createPlayer(camera, canvas) {
   const c = CONFIG.player;
-  const [sx, sz] = findDryLand(c.spawn[0], c.spawn[1]);
+  const [sx, sz] = spawnPoint();
 
   const position = new THREE.Vector3(sx, heightAt(sx, sz), sz);
   const velocity = new THREE.Vector3();

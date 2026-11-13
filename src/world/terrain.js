@@ -34,7 +34,8 @@ export function slopeAt(x, z) {
   return Math.hypot(dx, dz);
 }
 
-export function createTerrain() {
+/** @param pathTexture optional trail mask from trails.js; its red channel tints the ground into footpath */
+export function createTerrain(pathTexture = null) {
   const c = CONFIG.terrain;
   const geo = new THREE.PlaneGeometry(c.size, c.size, c.segments, c.segments);
   geo.rotateX(-Math.PI / 2);
@@ -71,10 +72,43 @@ export function createTerrain() {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  const mesh = new THREE.Mesh(
-    geo,
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: c.flatShading }),
-  );
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: c.flatShading });
+  if (pathTexture) {
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uPathMap = { value: pathTexture };
+      shader.uniforms.uPathColor = { value: new THREE.Color(CONFIG.trails.color) };
+      shader.uniforms.uPathStrength = { value: CONFIG.trails.strength };
+      shader.uniforms.uTerrainSize = { value: c.size };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nvarying vec2 vPathUv;\nvarying vec2 vGroundXZ;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGroundXZ = position.xz;\nvPathUv = position.xz / uTerrainSize + 0.5;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          uniform sampler2D uPathMap;
+          uniform vec3 uPathColor;
+          uniform float uPathStrength;
+          varying vec2 vPathUv;
+          varying vec2 vGroundXZ;
+          float pathHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          float pathNoise(vec2 p) {
+            vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(pathHash(i), pathHash(i + vec2(1.0, 0.0)), f.x), mix(pathHash(i + vec2(0.0, 1.0)), pathHash(i + vec2(1.0, 1.0)), f.x), f.y);
+          }`,
+        )
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          // Footpaths: a worn, slightly ragged strip of earth over the biome's ground colour.
+          float pathWear = texture2D(uPathMap, vPathUv).r;
+          float ragged = pathNoise(vGroundXZ * 0.9) * 0.6 + pathNoise(vGroundXZ * 3.1) * 0.4;
+          pathWear = smoothstep(0.3, 0.75, pathWear + (ragged - 0.5) * 0.45);
+          diffuseColor.rgb = mix(diffuseColor.rgb, uPathColor * (0.85 + ragged * 0.3), pathWear * uPathStrength);`,
+        );
+    };
+  }
+  const mesh = new THREE.Mesh(geo, material);
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   return mesh;
@@ -113,4 +147,21 @@ export function findDryLand(x, z) {
     }
   }
   return [x, z];
+}
+
+/** Where the player starts: CONFIG.player.spawn moved onto dry land. */
+let spawn = null;
+export function spawnPoint() {
+  return (spawn ??= findDryLand(CONFIG.player.spawn[0], CONFIG.player.spawn[1]));
+}
+
+/** 0..1 — how close open water is (1 = at the water's edge). Used for sound. */
+export function waterNearness(x, z) {
+  for (const radius of [0, 5, 11, 18, 26]) {
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+      if (heightAt(x + Math.cos(a) * radius, z + Math.sin(a) * radius) < CONFIG.water.level) return 1 - radius / 30;
+      if (radius === 0) break;
+    }
+  }
+  return 0;
 }

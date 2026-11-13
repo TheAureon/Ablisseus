@@ -40,8 +40,22 @@ export const ASSETS = {
   grassPale:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.grass('#6f9f6a', '#cfe6b0') },
   flowerPink:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.flower('#ffd3e6', '#ff7fb5') },
 
-  beacon: { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.beacon },
-  arch:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.arch },
+  // Natural landmarks — one large feature per biome (placed via CONFIG.landmarks)
+  elderTree:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.giantTree },
+  motherBlossom:{ model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.giantTree('#f4a9cc', '#5a4038') },
+  rockArch:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.rockArch },
+  rockSpire:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.rockSpire },
+  stoneCircle:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.stoneCircle },
+  iceCrown:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.iceCrown },
+
+  // Trail furniture (placed automatically along the paths, see CONFIG.trails)
+  campfire:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.campfire },
+  logSeat:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.logSeat },
+  tent:         { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.tent },
+  bench:        { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.bench },
+  lantern:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.lantern },
+  signpost:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.signpost },
+
   // Your own body, seen when looking down. See body.js for model requirements.
   body:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.body },
 };

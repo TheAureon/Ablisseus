@@ -103,18 +103,20 @@ export const CONFIG = {
   //   fog                – fog multiplier while you are inside it
   //   motes              – colour of the drifting specks in the air
   //   bias               – makes the biome more (+) or less (−) common, e.g. 0.2
+  //   wind/leaves/birds/crickets – how much of each sound you hear there (0 = none)
+  //   footstep           – what the ground sounds like: 'grass', 'sand' or 'snow'
   biomes: {
     scale: 0.0032, // lower = larger regions
     sharpness: 9, // higher = harder borders between biomes
     spawn: 'meadow', // biome you start in
     spawnRadius: 90, // how much of it is guaranteed around the spawn point
     types: {
-      meadow:  { label: 'The Meadow',      ground: '#5f8f4a', groundAlt: '#7da052', heightScale: 0.8,  heightOffset: 0,   fog: 1.0,  motes: '#ffe9a8' },
-      pines:   { label: 'Pinewood',        ground: '#3f6a44', groundAlt: '#557a4a', heightScale: 1.15, heightOffset: 2,   fog: 1.35, motes: '#d8f0c0' },
-      autumn:  { label: 'Emberwood',       ground: '#9a7b3c', groundAlt: '#b08a45', heightScale: 1.0,  heightOffset: 1,   fog: 1.15, motes: '#ffb870' },
-      desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08 },
-      snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 1.7,  heightOffset: 7,   fog: 1.6,  motes: '#ffffff', bias: -0.08 },
-      blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd' },
+      meadow:  { label: 'The Meadow',      ground: '#5f8f4a', groundAlt: '#7da052', heightScale: 0.8,  heightOffset: 0,   fog: 1.0,  motes: '#ffe9a8', wind: 0.8, leaves: 0.35, birds: 1.0, crickets: 1.0, footstep: 'grass' },
+      pines:   { label: 'Pinewood',        ground: '#3f6a44', groundAlt: '#557a4a', heightScale: 1.15, heightOffset: 2,   fog: 1.35, motes: '#d8f0c0', wind: 0.7, leaves: 1.0, birds: 0.6, crickets: 0.5, footstep: 'grass' },
+      autumn:  { label: 'Emberwood',       ground: '#9a7b3c', groundAlt: '#b08a45', heightScale: 1.0,  heightOffset: 1,   fog: 1.15, motes: '#ffb870', wind: 0.8, leaves: 0.9, birds: 0.7, crickets: 0.7, footstep: 'grass' },
+      desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08, wind: 1.2, leaves: 0.0, birds: 0.12, crickets: 0.5, footstep: 'sand' },
+      snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 1.7,  heightOffset: 7,   fog: 1.6,  motes: '#ffffff', bias: -0.08, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow' },
+      blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd', wind: 0.6, leaves: 0.6, birds: 1.2, crickets: 0.9, footstep: 'grass' },
     },
   },
 
@@ -159,17 +161,47 @@ export const CONFIG = {
     { biome: 'blossom', asset: 'flowerPink',  count: 2200,  height: [1.2, 30], maxSlope: 0.35, scale: [0.7, 1.4], cluster: { scale: 0.02, threshold: -0.1 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
   ],
 
-  // Unique hand-placed objects. position is [x, z]; y snaps to the ground.
+  // ── Natural landmarks ─────────────────────────────────────────────────────
+  // One large feature per biome; the trails lead to them. With `biome`, the
+  // landmark finds its own spot deep inside that biome. Use `position: [x, z]`
+  // instead to place one by hand. `radius` is its rough footprint in metres
+  // (plants and the path keep clear of it); `label` shows as you arrive.
   landmarks: [
-    { asset: 'beacon', position: [40, -55], scale: 1, rotation: 0 },
-    { asset: 'beacon', position: [-170, 90], scale: 1.3, rotation: 1 },
-    { asset: 'beacon', position: [160, 170], scale: 1.1, rotation: 2 },
-    { asset: 'beacon', position: [220, -120], scale: 1.2, rotation: 3 },
-    { asset: 'beacon', position: [-90, -230], scale: 1.2, rotation: 4 },
-    { asset: 'beacon', position: [-250, -60], scale: 1.4, rotation: 5 },
-    { asset: 'arch',   position: [-30, -140], scale: 1, rotation: 0.4 },
-    { asset: 'arch',   position: [120, 40], scale: 1.2, rotation: 1.3 },
+    { asset: 'elderTree',     biome: 'meadow',  label: 'The Elder Tree',    radius: 6,  scale: 1 },
+    { asset: 'rockSpire',     biome: 'pines',   label: "The Giant's Tooth", radius: 7,  scale: 1 },
+    { asset: 'stoneCircle',   biome: 'autumn',  label: 'The Old Stones',    radius: 10, scale: 1 },
+    { asset: 'rockArch',      biome: 'desert',  label: 'The Sandgate',      radius: 11, scale: 1 },
+    { asset: 'iceCrown',      biome: 'snow',    label: 'The Frost Crown',   radius: 8,  scale: 1 },
+    { asset: 'motherBlossom', biome: 'blossom', label: 'The Mother Blossom', radius: 6, scale: 1 },
   ],
+
+  // ── Trails ────────────────────────────────────────────────────────────────
+  // Footpaths from the starting camp to every landmark, planned automatically
+  // around water and steep ground, with lanterns, benches, signposts and camps.
+  trails: {
+    enabled: true,
+    loop: true, // also link the landmarks to each other, making round walks
+    width: 2.4, // metres
+    color: '#8c7350', // trodden earth
+    strength: 0.8, // how strongly the path shows over the ground colour (0..1)
+    clearWidth: 9, // trees and rocks keep this far apart across the path
+    slopeAvoidance: 7, // higher = paths wind further to stay on gentle ground
+    reuseDiscount: 0.35, // lower = routes merge into shared trunk paths more eagerly
+    loopReuseDiscount: 0.8, // same, for the landmark-to-landmark loop routes
+    gridCell: 8, // planning resolution in metres
+    lanternSpacing: 75, // metres between lanterns (make huge to remove them)
+    campEvery: 2, // a wayside camp on every Nth route out from the start
+  },
+
+  campfire: {
+    lightColor: '#ff9a4a',
+    lightIntensity: 26,
+    lightRange: 24, // metres the firelight reaches
+    lightFadeDistance: 90, // beyond this the nearest fire's light and embers are off
+    embers: 28,
+  },
+
+  lanterns: { dayGlow: 0.5, nightGlow: 5 }, // how bright the lantern panes are
 
   wind: { speed: 1.4 },
 
@@ -226,9 +258,16 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
   },
 
   // ── Audio ─────────────────────────────────────────────────────────────────
+  // All sound is synthesised; see audio.js. Set any volume to 0 to remove it.
   audio: {
-    wind: true, // procedurally generated wind, no file needed
-    windVolume: 0.12,
+    masterVolume: 1,
+    windVolume: 0.1,
+    leavesVolume: 0.03,
+    waterVolume: 0.1,
+    fireVolume: 0.14,
+    birdVolume: 0.035,
+    cricketVolume: 0.012,
+    owlVolume: 0.03,
     footsteps: true, // soft synthesised footfalls
     footstepVolume: 0.1,
     music: null, // e.g. 'audio/ambient.mp3' (put the file in /audio)
@@ -239,7 +278,7 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     crosshair: true, // small dot in the centre of the screen
     crosshairSize: 4, // pixels
     crosshairOpacity: 0.55,
-    biomeLabel: true, // show a region's name for a moment as you enter it
+    biomeLabel: true, // show a region's or landmark's name for a moment as you arrive
   },
 
   debug: {
