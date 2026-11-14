@@ -22,6 +22,7 @@ import { createSky } from './world/sky.js';
 import { createMotes } from './world/motes.js';
 import { createPlayer } from './player.js';
 import { createBody } from './body.js';
+import { createMap } from './map.js';
 import { startAudio, playFootstep, updateSoundscape } from './audio.js';
 
 const canvas = document.getElementById('scene');
@@ -103,6 +104,19 @@ player.onStep = (strength, inWater) => {
 const body = createBody(templates.body);
 scene.add(body.object);
 
+// ── Map ─────────────────────────────────────────────────────────────────────
+const map = createMap({ landmarks, trails });
+if (CONFIG.ui.map.enabled) {
+  addEventListener('keydown', (e) => {
+    if (e.code === CONFIG.ui.map.key && !e.repeat && overlay.classList.contains('hidden')) map.toggle();
+    if (e.code === 'Escape') map.close();
+  });
+  document.getElementById('map-button').addEventListener('click', () => map.toggle());
+  document.getElementById('map').addEventListener('click', () => map.close());
+} else {
+  document.getElementById('map-button').remove();
+}
+
 // ── Start / pause ───────────────────────────────────────────────────────────
 overlayStatus.textContent = isTouch ? 'tap to wander' : 'click to wander';
 
@@ -146,7 +160,7 @@ if (CONFIG.debug.gui) {
 }
 
 // Handy for poking at things from the browser console.
-window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks };
+window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map };
 
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
@@ -235,6 +249,7 @@ renderer.setAnimationLoop(() => {
 
   player.update(dt);
   body.update(dt, player.state);
+  map.update(player.position, player.state.yaw);
   updateScatter(camera.position);
   // The biome you are standing in tints the air: fog thickness and mote colour.
   const weights = biomeWeights(player.position.x, player.position.z, frameWeights);

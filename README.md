@@ -39,6 +39,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Look | mouse (click to capture, `Esc` to release) |
 | Hurry | `Shift` |
 | Jump | `Space` |
+| Map | `M` |
 | Tweak panel | `G` (press `Esc` first to free the mouse) |
 | Touch | drag left half of screen to walk, right half to look, tap right half to jump |
 
@@ -85,6 +86,7 @@ src/
   main.js          renderer, post-processing, frame loop, tweak panel
   player.js        first-person movement and input
   body.js          your own body, seen when looking down
+  map.js           the map (M), drawn from the world's own data
   audio.js         synthesised soundscape: wind, leaves, water, fire, birds, crickets, footsteps
   world/
     terrain.js     island height function, terrain mesh, water

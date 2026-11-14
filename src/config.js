@@ -106,18 +106,19 @@ export const CONFIG = {
   //   rockiness          – below 1, steep slopes keep their ground colour instead of turning to bare rock
   //   wind/leaves/birds/crickets – how much of each sound you hear there (0 = none)
   //   footstep           – what the ground sounds like: 'grass', 'sand' or 'snow'
+  //   mapSymbol/mapDensity – how it is drawn on the map: 'pine', 'tree', 'tuft', 'dots', 'peak'; 0..1 how many
   biomes: {
     scale: 0.0032, // lower = larger regions
     sharpness: 9, // higher = harder borders between biomes
     spawn: 'meadow', // biome you start in
     spawnRadius: 90, // how much of it is guaranteed around the spawn point
     types: {
-      meadow:  { label: 'The Meadow',      ground: '#5f8f4a', groundAlt: '#7da052', heightScale: 0.8,  heightOffset: 0,   fog: 1.0,  motes: '#ffe9a8', wind: 0.8, leaves: 0.35, birds: 1.0, crickets: 1.0, footstep: 'grass' },
-      pines:   { label: 'Pinewood',        ground: '#3f6a44', groundAlt: '#557a4a', heightScale: 1.15, heightOffset: 2,   fog: 1.35, motes: '#d8f0c0', wind: 0.7, leaves: 1.0, birds: 0.6, crickets: 0.5, footstep: 'grass' },
-      autumn:  { label: 'Emberwood',       ground: '#9a7b3c', groundAlt: '#b08a45', heightScale: 1.0,  heightOffset: 1,   fog: 1.15, motes: '#ffb870', wind: 0.8, leaves: 0.9, birds: 0.7, crickets: 0.7, footstep: 'grass' },
-      desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08, wind: 1.2, leaves: 0.0, birds: 0.12, crickets: 0.5, footstep: 'sand' },
-      snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 2.3,  heightOffset: 44,  fog: 1.6,  motes: '#ffffff', bias: -0.08, rockiness: 0.5, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow' },
-      blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd', wind: 0.6, leaves: 0.6, birds: 1.2, crickets: 0.9, footstep: 'grass' },
+      meadow:  { label: 'The Meadow',      ground: '#5f8f4a', groundAlt: '#7da052', heightScale: 0.8,  heightOffset: 0,   fog: 1.0,  motes: '#ffe9a8', wind: 0.8, leaves: 0.35, birds: 1.0, crickets: 1.0, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.25 },
+      pines:   { label: 'Pinewood',        ground: '#3f6a44', groundAlt: '#557a4a', heightScale: 1.15, heightOffset: 2,   fog: 1.35, motes: '#d8f0c0', wind: 0.7, leaves: 1.0, birds: 0.6, crickets: 0.5, footstep: 'grass', mapSymbol: 'pine', mapDensity: 0.75 },
+      autumn:  { label: 'Emberwood',       ground: '#9a7b3c', groundAlt: '#b08a45', heightScale: 1.0,  heightOffset: 1,   fog: 1.15, motes: '#ffb870', wind: 0.8, leaves: 0.9, birds: 0.7, crickets: 0.7, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.6 },
+      desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08, wind: 1.2, leaves: 0.0, birds: 0.12, crickets: 0.5, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.5 },
+      snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 2.3,  heightOffset: 44,  fog: 1.6,  motes: '#ffffff', bias: -0.08, rockiness: 0.5, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow', mapSymbol: 'peak', mapDensity: 0.4 },
+      blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd', wind: 0.6, leaves: 0.6, birds: 1.2, crickets: 0.9, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.5 },
     },
   },
 
@@ -312,6 +313,14 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     crosshairSize: 4, // pixels
     crosshairOpacity: 0.55,
     biomeLabel: true, // show a region's or landmark's name for a moment as you arrive
+    // The map, opened with M. It is drawn from the world itself, so it follows any change to the island.
+    map: {
+      enabled: true,
+      key: 'KeyM',
+      resolution: 1400, // pixels across; lower if opening the map stutters
+      contourEvery: 8, // metres of height between contour lines
+      scaleBarMetres: 100,
+    },
   },
 
   debug: {
