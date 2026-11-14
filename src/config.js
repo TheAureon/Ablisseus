@@ -82,16 +82,47 @@ export const CONFIG = {
       sand: '#cdbb8e',
       rock: '#77736d', // steep slopes
       seabed: '#4b5a55',
+      shelf: '#6a6966', // the stone shelves that hold tide pools
     },
-    sandHeight: 1.0, // sand below this height (above water level)
+    sandHeight: 1.3, // sand below this height (above water level)
+    // Beaches: the slope is eased around the waterline to make a broad strand.
+    beach: {
+      flatten: 0.3, // slope right at the waterline, as a fraction of the natural slope (1 = no change)
+      height: 3.5, // metres above/below water over which that eases back to normal
+      wetReach: 0.45, // how far above the water the sand stays dark and wet (metres of height)
+    },
     rockSlope: 0.28, // 0 = flat, 1 = vertical
   },
 
   water: {
     level: 0,
-    color: '#2f6f86',
-    opacity: 0.82,
+    color: '#2f6f86', // deep water
+    shallowColor: '#7fd0c4', // over sand near the shore
+    shallowDepth: 2.2, // metres over which shallow fades to deep
+    opacity: 0.86,
     skyTint: 0.2, // how much the water picks up the horizon colour
+    foam: 1, // 0 = no foam … 1 = full
+    waves: {
+      height: 0.16, // metres the swell rises and falls (0 = flat calm)
+      length: 34, // metres between crests
+      speed: 0.9,
+      ripple: 0.5, // strength of the small glinting ripples
+    },
+    // The sea slowly rises and falls. Low tide bares the rock shelves and their pools.
+    tide: {
+      range: 0.8, // metres between low and high water (0 = no tide)
+      periodSeconds: 360, // real seconds from one high tide to the next
+    },
+  },
+
+  // Tide pools: stone shelves at the waterline, each holding a few pools.
+  tidePools: {
+    enabled: true,
+    count: 12, // shelves around the coast
+    spacing: 110, // at least this far apart (metres)
+    shelfRadius: 8,
+    shelfHeight: 0.1, // above mean water: bare at low tide, awash at high
+    poolsPerShelf: [2, 4],
   },
 
   // ── Biomes ────────────────────────────────────────────────────────────────
@@ -130,6 +161,12 @@ export const CONFIG = {
   //   sway: wind bend amount   colorJitter: per-instance tint variation
   //   drawDistance: metres beyond which it is not drawn (big performance lever for grass)
   scatter: [
+    // The shore — along every beach, whatever the biome (heights are metres above the water)
+    { asset: 'driftwood', count: 150,  height: [0.5, 1.7],  maxSlope: 0.2,  scale: [0.6, 1.5], colorJitter: 0.15, castShadow: true, drawDistance: 260 },
+    { asset: 'pebble',    count: 1400, height: [-0.2, 1.4], maxSlope: 0.5,  scale: [0.1, 0.4], cluster: { scale: 0.05, threshold: 0.1 }, colorJitter: 0.35, sink: 0.03, drawDistance: 110 },
+    { asset: 'starfish',  count: 320,  height: [-0.25, 0.5], maxSlope: 0.25, scale: [0.8, 1.6], colorJitter: 0.25, drawDistance: 45 },
+    { asset: 'grassDry',  count: 7000, height: [1.5, 2.9],  maxSlope: 0.35, scale: [0.9, 1.9], cluster: { scale: 0.045, threshold: 0.0 }, sway: 0.3, colorJitter: 0.25, drawDistance: 150 },
+
     // Meadow — open grass, flowers, the odd tree
     { biome: 'meadow',  asset: 'grass',       count: 20000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.2], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.3, drawDistance: 150 },
     { biome: 'meadow',  asset: 'flower',      count: 1800,  height: [1.5, 20], maxSlope: 0.3,  scale: [0.7, 1.3], cluster: { scale: 0.02, threshold: 0.2 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },

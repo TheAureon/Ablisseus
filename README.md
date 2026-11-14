@@ -49,6 +49,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 |---|---|
 | Change any number: speeds, island size/shape, colours, prop counts, sky colours, fog, day length, bloom | `src/config.js` |
 | Add, remove or restyle a biome; choose what grows in it | `biomes` and `scatter` in `src/config.js` |
+| Change waves, tide, beaches, tide pools | `water`, `tidePools` and `terrain.beach` in `src/config.js` |
 | Change landmarks, footpaths, lanterns, camps | `landmarks`, `trails`, `campfire` in `src/config.js` |
 | Change sound volumes, or how lively each biome sounds | `audio` and each biome's `wind/leaves/birds/crickets` in `src/config.js` |
 | Trade looks for frame rate: resolution, draw distance, shadows, bloom | `render` in `src/config.js` |
@@ -89,8 +90,9 @@ src/
   map.js           the map (M), drawn from the world's own data
   audio.js         synthesised soundscape: wind, leaves, water, fire, birds, crickets, footsteps
   world/
-    terrain.js     island height function, terrain mesh, water
+    terrain.js     island height function, terrain mesh, beaches, the sea (waves, foam, tide)
     biomes.js      regions with their own ground, terrain shape and mood
+    shore.js       rock shelves and tide pools along the coast
     landmarks.js   one large natural feature per biome, placed automatically
     trails.js      footpaths between camp and landmarks, plus lanterns, signposts, camps
     campfire.js    flickering fires, embers and firelight

@@ -48,6 +48,12 @@ export const ASSETS = {
   stoneCircle:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.stoneCircle },
   iceCrown:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.iceCrown },
 
+  // Shoreline
+  driftwood:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.driftwood },
+  starfish:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.starfish },
+  pebble:       { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rock('#9b958c') },
+  rockPool:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.rockPool }, // a tide pool; placed on rock shelves, see CONFIG.tidePools
+
   // Trail furniture (placed automatically along the paths, see CONFIG.trails)
   campfire:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.campfire },
   logSeat:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.logSeat },

@@ -10,7 +10,8 @@ import GUI from 'lil-gui';
 
 import { CONFIG } from './config.js';
 import { loadAssets } from './assets.js';
-import { createTerrain, createWater, waterNearness } from './world/terrain.js';
+import { createTerrain, createWater, createHeightTexture, terrainUniforms, waterNearness, heightAt } from './world/terrain.js';
+import { placeTidePools } from './world/shore.js';
 import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOME_NAMES } from './world/biomes.js';
 import { createScatter, createPlacedProps, updateScatter, windUniforms } from './world/scatter.js';
 import { placeLandmarks, createLandmarks } from './world/landmarks.js';
@@ -66,17 +67,19 @@ addEventListener('resize', () => {
 });
 
 // ── World ───────────────────────────────────────────────────────────────────
-const live = { time: CONFIG.time.start, fog: 1 }; // values the tweak panel changes at runtime
+const live = { time: CONFIG.time.start, fog: 1, tidePhase: -0.9 }; // values the tweak panel changes at runtime
 const adaptive = { scale: 1, frames: 0, seconds: 0, goodSeconds: 0, patience: 4, warmup: 3, steppedUp: false }; // resolution auto-scaling state
 
 const templates = await loadAssets();
-const water = createWater();
 
 // Landmarks choose their spots first, trails are planned between them, and
 // only then is everything else grown around the paths.
+const tidePools = placeTidePools(); // (these reshape the shore, so they go first)
 const landmarks = placeLandmarks();
 const trails = createTrails(landmarks);
+const water = createWater(createHeightTexture());
 scene.add(createTerrain(trails.texture), water, createScatter(templates, trails), createLandmarks(templates, landmarks));
+if (tidePools.length) scene.add(createPlacedProps(templates.rockPool, 'rockPool', tidePools, { castShadow: false, drawDistance: 220 }));
 for (const [asset, placements] of Object.entries(trails.props)) {
   if (placements.length) scene.add(createPlacedProps(templates[asset], asset, placements, { drawDistance: 380 }));
 }
@@ -144,6 +147,8 @@ if (CONFIG.debug.gui) {
   gui.add(CONFIG.time, 'paused').name('freeze time');
   gui.add(CONFIG.time, 'dayLengthSeconds', 30, 3600, 10).name('day length (s)');
   gui.add(live, 'fog', 0, 4, 0.05).name('fog amount');
+  gui.add(live, 'tidePhase', -Math.PI, Math.PI, 0.01).name('tide (shift)');
+  gui.add(CONFIG.water.waves, 'height', 0, 0.6, 0.01).name('wave height');
   gui.add(CONFIG.player, 'walkSpeed', 1, 15, 0.1).name('walk speed');
   gui.add(CONFIG.player, 'sprintSpeed', 1, 40, 0.5).name('sprint speed');
   gui.add(CONFIG.body, 'enabled').name('show body');
@@ -160,7 +165,7 @@ if (CONFIG.debug.gui) {
 }
 
 // Handy for poking at things from the browser console.
-window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map };
+window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt };
 
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
@@ -293,8 +298,14 @@ renderer.setAnimationLoop(() => {
 
   waterColor.copy(water.userData.baseColor).lerp(sky.state.skyHorizon, CONFIG.water.skyTint);
   water.material.color.copy(waterColor);
-  water.position.x = camera.position.x;
-  water.position.z = camera.position.z;
+  // The sheet of water follows you (in whole steps, so its mesh doesn't shimmer)
+  // and rises and falls with the tide.
+  const tide = CONFIG.water.tide;
+  const seaLevel = CONFIG.water.level + (tide.range > 0 ? Math.sin((elapsed / tide.periodSeconds) * Math.PI * 2 + live.tidePhase) * tide.range * 0.5 : 0);
+  water.position.set(Math.round(camera.position.x / 4) * 4, seaLevel, Math.round(camera.position.z / 4) * 4);
+  water.userData.uniforms.uTime.value = elapsed;
+  water.userData.uniforms.uWaveHeight.value = CONFIG.water.waves.height;
+  terrainUniforms.uSeaLevel.value = seaLevel;
 
   renderer.toneMappingExposure = sky.state.exposure;
   const fov = CONFIG.render.fov + player.fovOffset;

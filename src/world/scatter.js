@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
-import { heightAt, slopeAt } from './terrain.js';
+import { heightAt, approxHeightAt, approxSlopeAt } from './terrain.js';
 import { noise2, seededRandom, smoothstep } from './noise.js';
 import { biomeWeights, biomeIndex } from './biomes.js';
 
@@ -53,20 +53,25 @@ function placeLayer(layer, index, trails) {
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
 
+    // Cheapest tests first: most candidates fail on height or slope, and those
+    // are read from a prebuilt grid rather than worked out from scratch.
+    const rough = approxHeightAt(x, z);
+    if (rough < minH - 0.15 || rough > maxH + 0.15) continue;
+    if (approxSlopeAt(x, z) > (layer.maxSlope ?? 1)) continue;
+
     // Stay inside the layer's biome, thinning out toward its borders.
     if (biome >= 0 && rand() > smoothstep(0.3, 0.65, biomeWeights(x, z)[biome])) continue;
+    if (layer.cluster) {
+      const n = noise2(x * layer.cluster.scale + index * 50, z * layer.cluster.scale);
+      if (layer.cluster.invert ? n > layer.cluster.threshold : n < layer.cluster.threshold) continue;
+    }
 
     // Keep trails, camps and landmarks clear: nothing on the path itself, and
     // nothing tall close beside it.
     if (trails && (layer.castShadow ? trails.clearanceAt(x, z) : trails.pathAt(x, z)) > 0.25) continue;
 
-    const y = heightAt(x, z);
+    const y = heightAt(x, z); // the exact height, for the few that survive
     if (y < minH || y > maxH) continue;
-    if (slopeAt(x, z) > (layer.maxSlope ?? 1)) continue;
-    if (layer.cluster) {
-      const n = noise2(x * layer.cluster.scale + index * 50, z * layer.cluster.scale);
-      if (layer.cluster.invert ? n > layer.cluster.threshold : n < layer.cluster.threshold) continue;
-    }
 
     dummy.position.set(x, y - (layer.sink ?? 0), z);
     dummy.rotation.set(0, rand() * Math.PI * 2, 0);
