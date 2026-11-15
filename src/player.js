@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
-import { heightAt, isWalkable, spawnPoint } from './world/terrain.js';
+import { heightAt, spawnPoint, terrainUniforms } from './world/terrain.js';
 
 const KEYS = {
   forward: ['KeyW', 'ArrowUp'],
@@ -135,22 +135,58 @@ export function createPlayer(camera, canvas) {
       const grade = (ahead - ground) / 0.6;
       pace *= THREE.MathUtils.clamp(1 - grade * c.slopeEffect, 0.45, 1.15);
     }
-    // Wading
-    const depth = THREE.MathUtils.clamp((CONFIG.water.level - ground) / c.wadeDepth, 0, 1);
-    pace *= 1 - depth * c.wadeSlowdown;
-
     target.multiplyScalar(pace);
+
+    // ── Water ──
+    // You can walk in until the water is at your neck. Nothing blocks you: the
+    // water just drags harder the deeper you are, until heading deeper gets you
+    // nowhere. Turning back toward the shallows is always possible.
+    const seaLevel = terrainUniforms.uSeaLevel.value; // includes the tide
+    const depth = Math.max(0, seaLevel - ground); // metres of water where we stand
+    const submerged = Math.min(1, depth / c.neckDepth); // 0 dry … 1 up to the neck
+    const drag = 1 - Math.pow(submerged, c.waterDragCurve); // 1 on dry land … 0 at the neck
+    const freeSpeed = Math.max(drag, c.waterExitSpeed); // for heading back toward the shallows
+
+    // Which way does the bottom fall away?
+    let deeperX = heightAt(position.x - 0.5, position.z) - heightAt(position.x + 0.5, position.z);
+    let deeperZ = heightAt(position.x, position.z - 0.5) - heightAt(position.x, position.z + 0.5);
+    const fall = Math.hypot(deeperX, deeperZ);
+    if (depth > 0) {
+      if (fall > 1e-4) {
+        deeperX /= fall;
+        deeperZ /= fall;
+        // Split the intended movement into "heading deeper" and everything else.
+        const heading = target.x * deeperX + target.z * deeperZ;
+        // Deeper or along the shore: dragged to nothing by neck depth. Back toward the shallows: always possible.
+        const along = heading > 0 ? drag : freeSpeed;
+        target.x = (target.x - deeperX * heading) * drag + deeperX * heading * along;
+        target.z = (target.z - deeperZ * heading) * drag + deeperZ * heading * along;
+      } else {
+        target.multiplyScalar(freeSpeed);
+      }
+    }
 
     // Speeding up is gentler than slowing down.
     const speedingUp = target.lengthSq() > velocity.lengthSq();
     velocity.lerp(target, ease((speedingUp ? c.acceleration : c.deceleration) * (airborne ? c.airControl : 1), dt));
 
-    // Move each axis separately so we slide along shorelines instead of sticking.
+    // If the tide comes in over your head, the water carries you gently back up the shore.
+    if (depth > c.neckDepth + 0.03 && fall > 1e-4) {
+      velocity.x -= deeperX * c.waterExitSpeed * c.walkSpeed * dt * 2;
+      velocity.z -= deeperZ * c.waterExitSpeed * c.walkSpeed * dt * 2;
+    }
+
+    // Move one axis at a time. A step is only refused if leftover momentum
+    // would carry you in past your neck; along the shore you still slide freely.
+    const tooDeep = (x, z) => {
+      const there = seaLevel - heightAt(x, z);
+      return there > c.neckDepth && there > depth;
+    };
     const nx = position.x + velocity.x * dt;
     const nz = position.z + velocity.z * dt;
-    if (isWalkable(nx, position.z)) position.x = nx;
+    if (!tooDeep(nx, position.z)) position.x = nx;
     else velocity.x = 0;
-    if (isWalkable(position.x, nz)) position.z = nz;
+    if (!tooDeep(position.x, nz)) position.z = nz;
     else velocity.z = 0;
 
     // ── Vertical: follow the ground, or fly through a jump ──
@@ -161,7 +197,7 @@ export function createPlayer(camera, canvas) {
     const launch = () => {
       verticalSpeed = Math.sqrt(2 * c.gravity * c.jumpHeight);
       airborne = true;
-      onStep?.(0.7, depth > 0.2);
+      onStep?.(0.7, depth > 0.12);
     };
 
     if (airborne) {
@@ -180,7 +216,7 @@ export function createPlayer(camera, canvas) {
         dipSpeed += verticalSpeed * c.landingDip; // harder landings dip further
         velocity.multiplyScalar(1 - c.landingSlowdown * impact); // and cost a little momentum
         recover = c.jumpRecovery;
-        onStep?.(0.6 + impact * 0.4, depth > 0.2);
+        onStep?.(0.6 + impact * 0.4, depth > 0.12);
       }
     } else {
       position.y += (floor - position.y) * ease(c.groundFollow, dt);
@@ -190,7 +226,7 @@ export function createPlayer(camera, canvas) {
         crouch = c.jumpCrouch;
         windup -= dt;
         if (windup <= 0) launch();
-      } else if (jumpBuffer > 0 && recover <= 0 && c.jumpHeight > 0) {
+      } else if (jumpBuffer > 0 && recover <= 0 && c.jumpHeight > 0 && depth < c.jumpMaxDepth) {
         jumpBuffer = 0;
         windup = c.jumpWindup;
         if (windup <= 0) launch();
@@ -213,7 +249,7 @@ export function createPlayer(camera, canvas) {
     if (!airborne) stride += ((speed * dt) / (c.strideLength * (1 + hurry * 0.35))) * Math.PI * 2;
     // A foot lands twice per stride, at the bottom of each bob.
     if (!airborne && speed > 0.6 && Math.floor(stride / Math.PI) !== Math.floor(previousStride / Math.PI)) {
-      onStep?.(0.6 + hurry * 0.4, depth > 0.2);
+      onStep?.(0.6 + hurry * 0.4, depth > 0.12);
     }
 
     const bobScale = moveAmount * (1 + hurry * 0.5);
@@ -235,6 +271,7 @@ export function createPlayer(camera, canvas) {
     camera.position.x -= Math.sin(euler.y) * crane;
     camera.position.z -= Math.cos(euler.y) * crane;
     camera.position.y = Math.max(camera.position.y, floor + 0.3); // never sink into the ground
+    if (depth > 0) camera.position.y = Math.max(camera.position.y, seaLevel + c.eyeHeight - c.neckDepth - 0.08); // keep your head above water
     camera.quaternion.setFromEuler(euler);
 
     Object.assign(state, { yaw: euler.y, stride, moveAmount, hurry, speed, bob: bob + dip, air });

@@ -424,11 +424,6 @@ export function createWater(heightTexture) {
   return mesh;
 }
 
-/** True where the player is allowed to stand. */
-export function isWalkable(x, z) {
-  return heightAt(x, z) > CONFIG.water.level - CONFIG.player.wadeDepth;
-}
-
 /** Nearest walkable, dry point to (x, z), searched in an outward spiral. */
 export function findDryLand(x, z) {
   for (let r = 0; r < CONFIG.terrain.islandRadius; r += 3) {

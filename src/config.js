@@ -19,7 +19,6 @@ export const CONFIG = {
     acceleration: 4.5, // how quickly you get up to speed (lower = heavier)
     deceleration: 6.5, // how quickly you come to rest
     slopeEffect: 0.7, // uphill slows you, downhill speeds you up a little (0 = off)
-    wadeSlowdown: 0.45, // speed lost when knee-deep in water (0 = none)
 
     // Jumping
     jumpHeight: 0.8, // metres when the key is held (0 = no jumping)
@@ -47,7 +46,12 @@ export const CONFIG = {
     sprintFov: 4, // extra field of view while hurrying (degrees)
     groundFollow: 10, // how tightly the eyes follow bumps (lower = floatier)
 
-    wadeDepth: 0.6, // how deep into water you can walk
+    // Water: you can wade in until it reaches your neck. There is no wall —
+    // the deeper you are, the slower you can push further in, down to nothing.
+    neckDepth: 1.45, // metres of water at which you can go no deeper
+    waterDragCurve: 1.6, // 1 = slows evenly with depth; higher = stays quick in the shallows, then slows sharply
+    waterExitSpeed: 0.4, // fraction of normal speed you always keep for heading back toward the shallows
+    jumpMaxDepth: 0.7, // no jumping in water deeper than this
     spawn: [0, 0], // x, z — snaps to the nearest dry land
     startYaw: 0.6, // initial facing, radians
   },
