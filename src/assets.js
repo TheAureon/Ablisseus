@@ -40,6 +40,19 @@ export const ASSETS = {
   grassPale:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.grass('#6f9f6a', '#cfe6b0') },
   flowerPink:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.flower('#ffd3e6', '#ff7fb5') },
 
+  // The Far Isle's own plants and rocks
+  palm:        { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.palm },
+  treeJungle:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.tree('#2f7a45', '#4f3d2c') },
+  fern:        { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.fern },
+  lavender:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.grass('#5d7a45', '#a78be0') },
+  heather:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.bush('#9a6fb5') },
+  basalt:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.basalt },
+  rockAsh:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rock('#3a3636') },
+  emberBush:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.bush('#b5432e') },
+  reed:        { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.reed },
+  willow:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.tree('#9fb86a', '#5c5040') },
+  glowcap:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.glowcap },
+
   // Natural landmarks — one large feature per biome (placed via CONFIG.landmarks)
   elderTree:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.giantTree },
   motherBlossom:{ model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.giantTree('#f4a9cc', '#5a4038') },
@@ -47,6 +60,10 @@ export const ASSETS = {
   rockSpire:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.rockSpire },
   stoneCircle:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.stoneCircle },
   iceCrown:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.iceCrown },
+  greatBanyan:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.giantTree('#2c6b3f', '#4a3b2c') },
+  basaltOrgan:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.basaltOrgan },
+  cinderCone:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.cinderCone },
+  drownedStones:{ model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.stoneCircle('#5d6a63', '#4f7a52') },
 
   // Shoreline
   driftwood:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.driftwood },

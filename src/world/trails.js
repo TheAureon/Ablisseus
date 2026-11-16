@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { heightAt, slopeAt, spawnPoint, addPad, addRoadBed } from './terrain.js';
+import { ISLANDS, islandIndexAt } from './islands.js';
 
 const MASK_SIZE = 2048;
 
@@ -98,7 +99,15 @@ export function createTrails(landmarks) {
   const nodeX = (i) => -half + (i % N) * cell;
   const nodeZ = (i) => -half + ((i / N) | 0) * cell;
   for (let i = 0; i < N * N; i++) heights[i] = heightAt(nodeX(i), nodeZ(i));
-  for (let i = 0; i < N * N; i++) slopes[i] = slopeAt(nodeX(i), nodeZ(i)); // true steepness, including across the path
+  // True steepness of the ground at each node (including across the path), from its neighbours.
+  for (let gz = 0; gz < N; gz++) {
+    for (let gx = 0; gx < N; gx++) {
+      const i = gz * N + gx;
+      const dx = (heights[i + (gx < N - 1 ? 1 : 0)] - heights[i - (gx > 0 ? 1 : 0)]) / (2 * cell);
+      const dz = (heights[i + (gz < N - 1 ? N : 0)] - heights[i - (gz > 0 ? N : 0)]) / (2 * cell);
+      slopes[i] = Math.hypot(dx, dz);
+    }
+  }
   const dry = (i) => heights[i] > water + 0.7;
 
   const onTrail = new Uint8Array(N * N); // cells a path already uses
@@ -202,25 +211,67 @@ export function createTrails(landmarks) {
     return null;
   }
 
-  // Each landmark is approached from the side facing the camp, at the edge of its clearing.
-  const stops = landmarks.map((lm) => {
-    const d = Math.hypot(hubX - lm.x, hubZ - lm.z) || 1;
-    const gap = lm.radius + 2;
-    return { lm, x: lm.x + ((hubX - lm.x) / d) * gap, z: lm.z + ((hubZ - lm.z) / d) * gap, distance: d };
-  });
+  // Crossings: where you take to the water between one island and the next.
+  // Walk the straight line between the two; the channel is the stretch of
+  // water in which you pass from one island's side to the other's.
+  const crossings = []; // { from, to: island indices; a, b: the shore points on each }
+  for (let i = 0; i < ISLANDS.length - 1; i++) {
+    const A = ISLANDS[i];
+    const B = ISLANDS[i + 1];
+    const d = Math.hypot(B.x - A.x, B.z - A.z);
+    const at = (t) => [A.x + ((B.x - A.x) * t) / d, A.z + ((B.z - A.z) * t) / d];
+    const firm = (t) => heightAt(...at(t)) > water + 1.2;
+    let change = 0; // how far along the line we pass from A's side to B's
+    while (change < d && islandIndexAt(...at(change)) !== i + 1) change += 2;
+    let a = change;
+    while (a > 0 && !firm(a)) a -= 2; // back to A's shore
+    let b = change;
+    while (b < d && !firm(b)) b += 2; // on to B's shore
+    crossings.push({ from: i, to: i + 1, a: at(Math.max(0, a - 5)), b: at(Math.min(d, b + 5)) });
+  }
 
-  const spokes = []; // camp → landmark routes, used for placing wayside camps
-  for (const stop of [...stops].sort((a, b) => a.distance - b.distance)) {
-    const nodes = findRoute(hubX, hubZ, stop.x, stop.z);
-    if (nodes) spokes.push(nodes);
-  }
-  if (T.loop && stops.length > 2) {
-    const ring = [...stops].sort((a, b) => Math.atan2(a.z - hubZ, a.x - hubX) - Math.atan2(b.z - hubZ, b.x - hubX));
-    ring.forEach((stop, i) => {
-      const next = ring[(i + 1) % ring.length];
-      findRoute(stop.x, stop.z, next.x, next.z, T.loopReuseDiscount);
-    });
-  }
+  // Each island has its own web of paths, spreading from a hub: the camp you
+  // start at on the home island, the landing beach on the others.
+  const homeIsland = islandIndexAt(hubX, hubZ);
+  const stops = []; // every place a path leads to: { x, z, lm? (a landmark), crossing? }
+  const hubs = []; // { island, x, z }
+  const spokes = []; // hub → stop routes, used for placing wayside camps
+
+  ISLANDS.forEach((island, index) => {
+    const arriving = crossings.find((c) => c.to === index);
+    const leaving = crossings.find((c) => c.from === index);
+    const hub = index === homeIsland ? [hubX, hubZ] : arriving ? arriving.b : leaving ? leaving.a : [island.x, island.z];
+    hubs.push({ island: index, x: hub[0], z: hub[1] });
+
+    // Landmarks are approached from the side facing the hub, at the edge of their clearing.
+    const here = landmarks
+      .filter((lm) => lm.island === index)
+      .map((lm) => {
+        const d = Math.hypot(hub[0] - lm.x, hub[1] - lm.z) || 1;
+        const gap = lm.radius + 2;
+        return { lm, x: lm.x + ((hub[0] - lm.x) / d) * gap, z: lm.z + ((hub[1] - lm.z) / d) * gap, distance: d };
+      });
+    // The shore where you set off for the next island (and, away from home, the one you came from).
+    for (const c of crossings) {
+      if (c.from === index && (c.a[0] !== hub[0] || c.a[1] !== hub[1])) here.push({ crossing: true, x: c.a[0], z: c.a[1], distance: Math.hypot(hub[0] - c.a[0], hub[1] - c.a[1]) });
+      if (c.to === index && index === homeIsland) here.push({ crossing: true, x: c.b[0], z: c.b[1], distance: Math.hypot(hub[0] - c.b[0], hub[1] - c.b[1]) });
+    }
+
+    for (const stop of [...here].sort((a, b) => a.distance - b.distance)) {
+      const nodes = findRoute(hub[0], hub[1], stop.x, stop.z);
+      if (nodes) spokes.push(nodes);
+    }
+    const sights = here.filter((stop) => stop.lm);
+    if (T.loop && sights.length > 2) {
+      const ring = [...sights].sort((a, b) => Math.atan2(a.z - hub[1], a.x - hub[0]) - Math.atan2(b.z - hub[1], b.x - hub[0]));
+      ring.forEach((stop, i) => {
+        const next = ring[(i + 1) % ring.length];
+        // Barely discounted, so these cut across country instead of going back via the hub.
+        findRoute(stop.x, stop.z, next.x, next.z, T.loopReuseDiscount);
+      });
+    }
+    stops.push(...here);
+  });
 
   // ── 2. Merge every route into one network ─────────────────────────────────
   // Collect the grid edges used by any route, then walk them out as stretches
@@ -455,11 +506,27 @@ export function createTrails(landmarks) {
     spurs.push([join, [(join[0] + spot[0]) / 2, (join[1] + spot[1]) / 2], spot]);
   });
 
-  // A signpost where each trail reaches its landmark.
+  // Away from home, each island has a camp near where you come ashore.
+  for (const hub of hubs) {
+    if (hub.island === homeIsland) continue;
+    const spot = findCampSpot(hub.x, hub.z, 6);
+    if (spot) {
+      addCamp(spot[0], spot[1], hub.x, hub.z, ISLANDS[hub.island].radius > 150);
+      spurs.push([[hub.x, hub.z], [(hub.x + spot[0]) / 2, (hub.z + spot[1]) / 2], spot]);
+    }
+    props.signpost.push({ x: hub.x + 2.5, z: hub.z + 2.5, rotation: Math.atan2(ISLANDS[hub.island].x - hub.x, ISLANDS[hub.island].z - hub.z) });
+  }
+
+  // A signpost where each trail reaches its landmark, or the shore of a crossing.
   for (const stop of stops) {
-    const dx = (stop.lm.x - stop.x) / (stop.lm.radius + 2);
-    const dz = (stop.lm.z - stop.z) / (stop.lm.radius + 2);
-    props.signpost.push({ x: stop.x + dz * 2.8, z: stop.z - dx * 2.8, rotation: Math.atan2(dx, dz) });
+    if (stop.lm) {
+      const dx = (stop.lm.x - stop.x) / (stop.lm.radius + 2);
+      const dz = (stop.lm.z - stop.z) / (stop.lm.radius + 2);
+      props.signpost.push({ x: stop.x + dz * 2.8, z: stop.z - dx * 2.8, rotation: Math.atan2(dx, dz) });
+    } else {
+      props.signpost.push({ x: stop.x + 2.5, z: stop.z - 2.5, rotation: 0 });
+      props.lantern.push({ x: stop.x - 2.5, z: stop.z + 2.5, rotation: 0 }); // a light to steer by from the water
+    }
   }
 
   // Lamp posts at intervals beside the path, alternating sides.
@@ -473,7 +540,7 @@ export function createTrails(landmarks) {
       if (heightAt(x, z) < water + 0.8) continue;
       if (props.lantern.some((l) => Math.hypot(l.x - x, l.z - z) < T.lanternSpacing * 0.55)) continue;
       if (campfires.some((c) => Math.hypot(c.x - x, c.z - z) < 14)) continue;
-      if (stops.some((s) => Math.hypot(s.lm.x - x, s.lm.z - z) < s.lm.radius + 6)) continue;
+      if (stops.some((s) => s.lm && Math.hypot(s.lm.x - x, s.lm.z - z) < s.lm.radius + 6)) continue;
       props.lantern.push({ x, z, rotation: 0 });
       side = -side;
     }
@@ -554,5 +621,6 @@ export function createTrails(landmarks) {
     props,
     campfires,
     routes,
+    crossings,
   };
 }

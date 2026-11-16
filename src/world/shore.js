@@ -8,6 +8,7 @@
 import { CONFIG } from '../config.js';
 import { naturalHeightAt, addRockShelf } from './terrain.js';
 import { seededRandom } from './noise.js';
+import { ISLANDS } from './islands.js';
 
 /** Chooses the shelves and returns where each pool goes: [{ x, z, rotation, scale }]. */
 export function placeTidePools() {
@@ -15,28 +16,32 @@ export function placeTidePools() {
   if (!P.enabled) return [];
   const rand = seededRandom(CONFIG.seed + 808);
   const water = CONFIG.water.level;
-  const radius = CONFIG.terrain.islandRadius;
-
-  // Walk in from the open sea along many bearings to find where the coast is.
-  const coast = [];
-  for (let a = 0; a < Math.PI * 2; a += Math.PI / 90) {
-    for (let r = radius * 1.15; r > radius * 0.45; r -= 2) {
-      const x = Math.cos(a) * r;
-      const z = Math.sin(a) * r;
-      if (naturalHeightAt(x, z) > water) {
-        // Step a little further in so the shelf straddles the waterline.
-        coast.push([Math.cos(a) * (r - 3), Math.sin(a) * (r - 3), rand()]);
-        break;
-      }
-    }
-  }
-  coast.sort((p, q) => p[2] - q[2]); // a fixed shuffle
 
   const sites = [];
-  for (const [x, z] of coast) {
-    if (sites.length >= P.count) break;
-    if (sites.some((s) => Math.hypot(s[0] - x, s[1] - z) < P.spacing)) continue;
-    sites.push([x, z]);
+  for (const island of ISLANDS) {
+    // Walk in from the open sea along many bearings to find where the coast is.
+    const coast = [];
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 90) {
+      for (let r = island.radius * 1.1; r > island.radius * 0.4; r -= 2) {
+        const x = island.x + Math.cos(a) * r;
+        const z = island.z + Math.sin(a) * r;
+        if (naturalHeightAt(x, z) > water) {
+          // Step a little further in so the shelf straddles the waterline.
+          coast.push([island.x + Math.cos(a) * (r - 3), island.z + Math.sin(a) * (r - 3), rand()]);
+          break;
+        }
+      }
+    }
+    coast.sort((p, q) => p[2] - q[2]); // a fixed shuffle
+
+    const wanted = Math.round((P.count * island.radius) / 380); // bigger islands have more coast
+    let found = 0;
+    for (const [x, z] of coast) {
+      if (found >= wanted) break;
+      if (sites.some((s) => Math.hypot(s[0] - x, s[1] - z) < P.spacing)) continue;
+      sites.push([x, z]);
+      found++;
+    }
   }
 
   const pools = [];

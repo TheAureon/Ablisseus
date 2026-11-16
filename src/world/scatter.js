@@ -7,7 +7,8 @@ import { CONFIG } from '../config.js';
 import { applyAtmosphere } from '../atmosphere.js';
 import { heightAt, approxHeightAt, approxSlopeAt } from './terrain.js';
 import { noise2, seededRandom, smoothstep } from './noise.js';
-import { biomeWeights, biomeIndex } from './biomes.js';
+import { approxBiomeWeight, biomeIndex } from './biomes.js';
+import { randomIslandPoint } from './islands.js';
 
 function addSway(material, amount, height, thin) {
   const m = material.clone();
@@ -72,7 +73,6 @@ function addSway(material, amount, height, thin) {
 /** Picks instance transforms for one scatter layer. */
 function placeLayer(layer, index, trails) {
   const rand = seededRandom(CONFIG.seed * 31 + index * 977 + 5);
-  const radius = CONFIG.terrain.islandRadius;
   const [minH, maxH] = layer.height ?? [-Infinity, Infinity];
   const [minS, maxS] = layer.scale ?? [1, 1];
   const items = []; // { matrix, tint, x, z }
@@ -81,19 +81,16 @@ function placeLayer(layer, index, trails) {
   if (layer.biome && biome < 0) console.warn(`[scatter] Unknown biome "${layer.biome}"`);
 
   for (let tries = 0; items.length < layer.count && tries < layer.count * 120; tries++) {
-    const r = Math.sqrt(rand()) * radius;
-    const a = rand() * Math.PI * 2;
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
+    const [x, z] = randomIslandPoint(rand);
 
+    // Stay inside the layer's biome, thinning out toward its borders.
+    if (biome >= 0 && rand() > smoothstep(0.3, 0.65, approxBiomeWeight(x, z, biome))) continue;
     // Cheapest tests first: most candidates fail on height or slope, and those
     // are read from a prebuilt grid rather than worked out from scratch.
     const rough = approxHeightAt(x, z);
     if (rough < minH - 0.15 || rough > maxH + 0.15) continue;
     if (approxSlopeAt(x, z) > (layer.maxSlope ?? 1)) continue;
 
-    // Stay inside the layer's biome, thinning out toward its borders.
-    if (biome >= 0 && rand() > smoothstep(0.3, 0.65, biomeWeights(x, z)[biome])) continue;
     if (layer.cluster) {
       const n = noise2(x * layer.cluster.scale + index * 50, z * layer.cluster.scale);
       if (layer.cluster.invert ? n > layer.cluster.threshold : n < layer.cluster.threshold) continue;
@@ -188,7 +185,7 @@ export function createScatter(templates, trails) {
       const [cx, cz] = key.split(',').map(Number);
       const chunk = buildInstances(parts, layer, items);
       chunk.name = `scatter:${layer.asset}`;
-      chunk.userData = { x: (cx + 0.5) * size, z: (cz + 0.5) * size, count: items.length, drawDistance: layer.drawDistance ?? Infinity };
+      chunk.userData = { x: (cx + 0.5) * size, z: (cz + 0.5) * size, count: items.length, drawDistance: layer.drawDistance ?? CONFIG.render.farDrawDistance };
       chunks.push(chunk);
       group.add(chunk);
     }

@@ -7,6 +7,17 @@
 export const CONFIG = {
   seed: 7, // change for a completely different island
 
+  // ── Islands ───────────────────────────────────────────────────────────────
+  // The world is a handful of islands in one sea. Each has a centre, a radius
+  // (land fades into the sea toward the rim) and the biomes that may appear on
+  // it, by name from `biomes.types` below. Add an entry to add an island; keep
+  // every island inside `terrain.size`. You can swim between them.
+  islands: [
+    { name: 'home',  label: 'The Home Isle',      x: -500, z: 0,  radius: 380, biomes: ['meadow', 'pines', 'autumn', 'desert', 'snow', 'blossom'] },
+    { name: 'stone', label: 'The Stepping Stone', x: -95,  z: 25, radius: 85,  biomes: ['meadow'] },
+    { name: 'far',   label: 'The Far Isle',       x: 420,  z: 40, radius: 520, biomes: ['jungle', 'lavender', 'ash', 'marsh', 'meadow', 'pines', 'autumn', 'desert', 'snow', 'blossom'] },
+  ],
+
   // ── Player ────────────────────────────────────────────────────────────────
   player: {
     eyeHeight: 1.7,
@@ -52,7 +63,7 @@ export const CONFIG = {
     swimSprintSpeed: 2.8, // with Shift
     strokeRate: 0.75, // strokes per second
     jumpMaxDepth: 0.7, // no jumping in water deeper than this
-    spawn: [0, 0], // x, z — snaps to the nearest dry land
+    spawn: [-500, 0], // x, z — snaps to the nearest level, dry ground (this is the middle of the home island)
     startYaw: 0.6, // initial facing, radians
   },
 
@@ -69,9 +80,10 @@ export const CONFIG = {
 
   // ── Terrain ───────────────────────────────────────────────────────────────
   terrain: {
-    size: 1000, // mesh width in metres
-    segments: 340, // mesh resolution
-    islandRadius: 380, // land fades into the sea at this distance
+    size: 2000, // width of the whole world in metres (must hold every island, with sea to spare)
+    segments: 560, // ground mesh resolution across that width
+    tiles: 10, // the ground is cut into tiles × tiles pieces so off-screen and open-sea pieces cost nothing
+    noiseOffset: [500, 0], // shifts the terrain pattern (set so the home island kept its shape when the world grew)
     islandFalloffStart: 0.55, // fraction of radius where the fade begins
     baseHeight: 5, // average land height above sea level
     amplitude: 20, // hill height
@@ -125,7 +137,7 @@ export const CONFIG = {
   // Tide pools: stone shelves at the waterline, each holding a few pools.
   tidePools: {
     enabled: true,
-    count: 12, // shelves around the coast
+    count: 12, // shelves around the coast of an island the size of the home isle (others get more or fewer by size)
     spacing: 110, // at least this far apart (metres)
     shelfRadius: 8,
     shelfHeight: 0.1, // above mean water: bare at low tide, awash at high
@@ -157,6 +169,11 @@ export const CONFIG = {
       desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08, wind: 1.2, leaves: 0.0, birds: 0.12, crickets: 0.5, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.5 },
       snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 2.3,  heightOffset: 44,  fog: 1.6,  motes: '#ffffff', bias: -0.08, rockiness: 0.5, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow', mapSymbol: 'peak', mapDensity: 0.4 },
       blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd', wind: 0.6, leaves: 0.6, birds: 1.2, crickets: 0.9, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.5 },
+      // The Far Isle's own
+      jungle:   { label: 'The Green Deep',  ground: '#2f6b3a', groundAlt: '#3f8046', heightScale: 1.05, heightOffset: 2,    fog: 1.7,  motes: '#c8ffb0', wind: 0.5, leaves: 1.1, birds: 1.5, crickets: 1.3, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.85 },
+      lavender: { label: 'Violet Downs',    ground: '#7f8f5a', groundAlt: '#8e84a8', heightScale: 0.7,  heightOffset: 3,    fog: 0.85, motes: '#e3c8ff', wind: 0.9, leaves: 0.3, birds: 0.9, crickets: 0.9, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.5 },
+      ash:      { label: 'The Cinderlands', ground: '#3b3736', groundAlt: '#4d4542', heightScale: 1.5,  heightOffset: 12,   fog: 1.3,  motes: '#ff9a5a', rockiness: 0.35, wind: 1.3, leaves: 0.0, birds: 0.05, crickets: 0.1, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.3 },
+      marsh:    { label: 'The Still Fens',  ground: '#5d7a4e', groundAlt: '#4f6b55', heightScale: 0.22, heightOffset: -3.4, fog: 1.9,  motes: '#b8ffe6', wind: 0.4, leaves: 0.5, birds: 0.8, crickets: 1.6, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.7 },
     },
   },
 
@@ -169,57 +186,86 @@ export const CONFIG = {
   //   drawDistance: metres beyond which it is not drawn (big performance lever for grass)
   scatter: [
     // The shore — along every beach, whatever the biome (heights are metres above the water)
-    { asset: 'driftwood', count: 150,  height: [0.5, 1.7],  maxSlope: 0.2,  scale: [0.6, 1.5], colorJitter: 0.15, castShadow: true, drawDistance: 260 },
-    { asset: 'pebble',    count: 1400, height: [-0.2, 1.4], maxSlope: 0.5,  scale: [0.1, 0.4], cluster: { scale: 0.05, threshold: 0.1 }, colorJitter: 0.35, sink: 0.03, drawDistance: 110 },
-    { asset: 'starfish',  count: 320,  height: [-0.25, 0.5], maxSlope: 0.25, scale: [0.8, 1.6], colorJitter: 0.25, drawDistance: 45 },
-    { asset: 'grassDry',  count: 7000, height: [1.5, 2.9],  maxSlope: 0.35, scale: [0.9, 1.9], cluster: { scale: 0.045, threshold: 0.0 }, sway: 0.3, colorJitter: 0.25, drawDistance: 150 },
+    { asset: 'driftwood', count: 420,  height: [0.5, 1.7],  maxSlope: 0.2,  scale: [0.6, 1.5], colorJitter: 0.15, castShadow: true, drawDistance: 260 },
+    { asset: 'pebble',    count: 3800, height: [-0.2, 1.4], maxSlope: 0.5,  scale: [0.1, 0.4], cluster: { scale: 0.05, threshold: 0.1 }, colorJitter: 0.35, sink: 0.03, drawDistance: 110 },
+    { asset: 'starfish',  count: 850,  height: [-0.25, 0.5], maxSlope: 0.25, scale: [0.8, 1.6], colorJitter: 0.25, drawDistance: 45 },
+    { asset: 'grassDry',  count: 18000, height: [1.5, 2.9],  maxSlope: 0.35, scale: [0.9, 1.9], cluster: { scale: 0.045, threshold: 0.0 }, sway: 0.3, colorJitter: 0.25, drawDistance: 150 },
 
     // Meadow — open grass, flowers, the odd tree
-    { biome: 'meadow',  asset: 'grass',       count: 20000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.2], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.3, drawDistance: 150 },
-    { biome: 'meadow',  asset: 'flower',      count: 1800,  height: [1.5, 20], maxSlope: 0.3,  scale: [0.7, 1.3], cluster: { scale: 0.02, threshold: 0.2 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
-    { biome: 'meadow',  asset: 'tree',        count: 150,   height: [1.5, 20], maxSlope: 0.35, scale: [0.8, 1.5], cluster: { scale: 0.010, threshold: 0.1 }, sway: 0.015, colorJitter: 0.25, castShadow: true },
-    { biome: 'meadow',  asset: 'rock',        count: 70,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 1.8], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'meadow',  asset: 'grass',       count: 40000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.2], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.3, drawDistance: 150 },
+    { biome: 'meadow',  asset: 'flower',      count: 3600,  height: [1.5, 20], maxSlope: 0.3,  scale: [0.7, 1.3], cluster: { scale: 0.02, threshold: 0.2 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
+    { biome: 'meadow',  asset: 'tree',        count: 300,   height: [1.5, 20], maxSlope: 0.35, scale: [0.8, 1.5], cluster: { scale: 0.010, threshold: 0.1 }, sway: 0.015, colorJitter: 0.25, castShadow: true },
+    { biome: 'meadow',  asset: 'rock',        count: 140,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 1.8], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
 
     // Pinewood — dense dark conifers
-    { biome: 'pines',   asset: 'pine',        count: 1300,  height: [2, 60],   maxSlope: 0.5,  scale: [0.8, 1.9], sway: 0.012, colorJitter: 0.25, castShadow: true },
-    { biome: 'pines',   asset: 'grassDark',   count: 9000,  height: [1.2, 40], maxSlope: 0.45, scale: [0.9, 1.8], cluster: { scale: 0.03, threshold: -0.2 }, sway: 0.2, colorJitter: 0.3, drawDistance: 150 },
-    { biome: 'pines',   asset: 'rock',        count: 160,   height: [-1, 60],  maxSlope: 1.0,  scale: [0.5, 2.4], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'pines',   asset: 'pine',        count: 2600,  height: [2, 60],   maxSlope: 0.5,  scale: [0.8, 1.9], sway: 0.012, colorJitter: 0.25, castShadow: true },
+    { biome: 'pines',   asset: 'grassDark',   count: 18000,  height: [1.2, 40], maxSlope: 0.45, scale: [0.9, 1.8], cluster: { scale: 0.03, threshold: -0.2 }, sway: 0.2, colorJitter: 0.3, drawDistance: 150 },
+    { biome: 'pines',   asset: 'rock',        count: 320,   height: [-1, 60],  maxSlope: 1.0,  scale: [0.5, 2.4], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
 
     // Emberwood — orange and gold broadleaf woods
-    { biome: 'autumn',  asset: 'treeAutumn',  count: 420,   height: [1.5, 40], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.015, colorJitter: 0.3, castShadow: true },
-    { biome: 'autumn',  asset: 'treeGold',    count: 260,   height: [1.5, 40], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.015, colorJitter: 0.2, castShadow: true },
-    { biome: 'autumn',  asset: 'grassDry',    count: 11000, height: [1.2, 40], maxSlope: 0.4,  scale: [0.9, 2.0], cluster: { scale: 0.03, threshold: -0.3 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
-    { biome: 'autumn',  asset: 'rock',        count: 80,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 2.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'autumn',  asset: 'treeAutumn',  count: 840,   height: [1.5, 40], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.015, colorJitter: 0.3, castShadow: true },
+    { biome: 'autumn',  asset: 'treeGold',    count: 520,   height: [1.5, 40], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.015, colorJitter: 0.2, castShadow: true },
+    { biome: 'autumn',  asset: 'grassDry',    count: 22000, height: [1.2, 40], maxSlope: 0.4,  scale: [0.9, 2.0], cluster: { scale: 0.03, threshold: -0.3 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
+    { biome: 'autumn',  asset: 'rock',        count: 160,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 2.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
 
     // The Pale Dunes — sand, cacti, scrub
-    { biome: 'desert',  asset: 'cactus',      count: 200,   height: [1.5, 30], maxSlope: 0.3,  scale: [0.7, 1.6], colorJitter: 0.2, castShadow: true },
-    { biome: 'desert',  asset: 'bush',        count: 600,   height: [1.2, 30], maxSlope: 0.4,  scale: [0.6, 1.5], cluster: { scale: 0.02, threshold: -0.1 }, colorJitter: 0.3, castShadow: true, drawDistance: 320 },
-    { biome: 'desert',  asset: 'rockSand',    count: 320,   height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 3.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
-    { biome: 'desert',  asset: 'grassDry',    count: 2500,  height: [1.2, 30], maxSlope: 0.4,  scale: [0.8, 1.6], cluster: { scale: 0.04, threshold: 0.3 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
+    { biome: 'desert',  asset: 'cactus',      count: 400,   height: [1.5, 30], maxSlope: 0.3,  scale: [0.7, 1.6], colorJitter: 0.2, castShadow: true },
+    { biome: 'desert',  asset: 'bush',        count: 1200,   height: [1.2, 30], maxSlope: 0.4,  scale: [0.6, 1.5], cluster: { scale: 0.02, threshold: -0.1 }, colorJitter: 0.3, castShadow: true, drawDistance: 320 },
+    { biome: 'desert',  asset: 'rockSand',    count: 640,   height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 3.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'desert',  asset: 'grassDry',    count: 5000,  height: [1.2, 30], maxSlope: 0.4,  scale: [0.8, 1.6], cluster: { scale: 0.04, threshold: 0.3 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
 
     // Whitereach — snowy heights
-    { biome: 'snow',    asset: 'pineSnow',    count: 520,   height: [2, 80],   maxSlope: 0.5,  scale: [0.8, 1.8], cluster: { scale: 0.012, threshold: -0.1 }, sway: 0.01, colorJitter: 0.1, castShadow: true },
-    { biome: 'snow',    asset: 'rockSnow',    count: 300,   height: [-1, 90],  maxSlope: 1.2,  scale: [0.5, 3.0], colorJitter: 0.15, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'snow',    asset: 'pineSnow',    count: 1040,   height: [2, 80],   maxSlope: 0.5,  scale: [0.8, 1.8], cluster: { scale: 0.012, threshold: -0.1 }, sway: 0.01, colorJitter: 0.1, castShadow: true },
+    { biome: 'snow',    asset: 'rockSnow',    count: 600,   height: [-1, 90],  maxSlope: 1.2,  scale: [0.5, 3.0], colorJitter: 0.15, castShadow: true, sink: 0.15, drawDistance: 420 },
 
     // Blossom Hollow — pink trees over soft pale grass
-    { biome: 'blossom', asset: 'treeBlossom', count: 420,   height: [1.5, 30], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.02, colorJitter: 0.15, castShadow: true },
-    { biome: 'blossom', asset: 'grassPale',   count: 15000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.0], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.2, drawDistance: 150 },
-    { biome: 'blossom', asset: 'flowerPink',  count: 2200,  height: [1.2, 30], maxSlope: 0.35, scale: [0.7, 1.4], cluster: { scale: 0.02, threshold: -0.1 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
+    { biome: 'blossom', asset: 'treeBlossom', count: 840,   height: [1.5, 30], maxSlope: 0.4,  scale: [0.8, 1.6], sway: 0.02, colorJitter: 0.15, castShadow: true },
+    { biome: 'blossom', asset: 'grassPale',   count: 30000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.0], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.2, drawDistance: 150 },
+    { biome: 'blossom', asset: 'flowerPink',  count: 4400,  height: [1.2, 30], maxSlope: 0.35, scale: [0.7, 1.4], cluster: { scale: 0.02, threshold: -0.1 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
+
+    // ── The Far Isle's own biomes ──
+    // The Green Deep — dense jungle: palms, broadleaf giants, ferns underfoot
+    { biome: 'jungle',   asset: 'palm',        count: 520,   height: [1.2, 40], maxSlope: 0.45, scale: [0.8, 1.6], sway: 0.02,  colorJitter: 0.2, castShadow: true },
+    { biome: 'jungle',   asset: 'treeJungle',  count: 620,   height: [1.5, 45], maxSlope: 0.45, scale: [1.0, 2.1], sway: 0.012, colorJitter: 0.25, castShadow: true },
+    { biome: 'jungle',   asset: 'fern',        count: 5500,  height: [1.2, 45], maxSlope: 0.5,  scale: [0.8, 1.9], sway: 0.12, colorJitter: 0.3, drawDistance: 110 },
+    { biome: 'jungle',   asset: 'grassDark',   count: 4000,  height: [1.2, 45], maxSlope: 0.45, scale: [1.0, 2.0], cluster: { scale: 0.03, threshold: -0.2 }, sway: 0.2, colorJitter: 0.3, drawDistance: 150 },
+    { biome: 'jungle',   asset: 'rock',        count: 90,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.5, 2.2], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+
+    // Violet Downs — rolling heath of lavender and heather
+    { biome: 'lavender', asset: 'lavender',    count: 15000, height: [1.3, 40], maxSlope: 0.45, scale: [1.0, 2.0], cluster: { scale: 0.025, threshold: -0.45 }, sway: 0.22, colorJitter: 0.2, drawDistance: 170 },
+    { biome: 'lavender', asset: 'heather',     count: 1100,  height: [1.3, 40], maxSlope: 0.45, scale: [0.6, 1.4], cluster: { scale: 0.02, threshold: 0.0 }, colorJitter: 0.25, castShadow: true, drawDistance: 320 },
+    { biome: 'lavender', asset: 'tree',        count: 45,    height: [1.5, 30], maxSlope: 0.3,  scale: [0.9, 1.5], sway: 0.015, colorJitter: 0.2, castShadow: true },
+    { biome: 'lavender', asset: 'rock',        count: 70,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.4, 1.8], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+
+    // The Cinderlands — black volcanic upland, almost bare
+    { biome: 'ash',      asset: 'basalt',      count: 260,   height: [2, 90],   maxSlope: 0.6,  scale: [0.6, 1.8], cluster: { scale: 0.015, threshold: 0.05 }, colorJitter: 0.15, castShadow: true },
+    { biome: 'ash',      asset: 'rockAsh',     count: 520,   height: [-1, 90],  maxSlope: 1.2,  scale: [0.4, 3.2], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'ash',      asset: 'emberBush',   count: 380,   height: [2, 90],   maxSlope: 0.5,  scale: [0.6, 1.3], cluster: { scale: 0.02, threshold: 0.2 }, colorJitter: 0.2, castShadow: true, drawDistance: 320 },
+
+    // The Still Fens — low, wet ground: reeds, willows, glowing caps at night
+    { biome: 'marsh',    asset: 'reed',        count: 11000, height: [-0.2, 6], maxSlope: 0.4,  scale: [0.8, 1.7], cluster: { scale: 0.035, threshold: -0.3 }, sway: 0.16, colorJitter: 0.25, drawDistance: 170 },
+    { biome: 'marsh',    asset: 'willow',      count: 190,   height: [0.8, 10], maxSlope: 0.3,  scale: [0.9, 1.7], sway: 0.02, colorJitter: 0.2, castShadow: true },
+    { biome: 'marsh',    asset: 'glowcap',     count: 900,   height: [0.4, 8],  maxSlope: 0.4,  scale: [0.7, 1.6], cluster: { scale: 0.05, threshold: 0.15 }, colorJitter: 0.1, drawDistance: 120 },
+    { biome: 'marsh',    asset: 'grassDark',   count: 5000,  height: [0.6, 10], maxSlope: 0.4,  scale: [0.9, 1.8], cluster: { scale: 0.03, threshold: -0.2 }, sway: 0.2, colorJitter: 0.3, drawDistance: 150 },
   ],
 
   // ── Natural landmarks ─────────────────────────────────────────────────────
-  // One large feature per biome; the trails lead to them. With `biome`, the
-  // landmark finds its own spot deep inside that biome. Use `position: [x, z]`
+  // Large one-off features; the trails lead to them. With `island` and `biome`,
+  // the landmark finds its own spot deep inside that biome on that island. Use `position: [x, z]`
   // instead to place one by hand. `radius` is its rough footprint in metres
   // (plants and the path keep clear of it); `label` shows as you arrive.
-  // `prefer: 'summit'` puts it as high up as it can find.
+  // `prefer: 'summit'` puts it as high up as it can find; `prefer: 'low'` down by the water.
   landmarks: [
-    { asset: 'elderTree',     biome: 'meadow',  label: 'The Elder Tree',    radius: 6,  scale: 1.6 },
-    { asset: 'rockSpire',     biome: 'pines',   label: "The Giant's Tooth", radius: 7,  scale: 1.9 },
-    { asset: 'stoneCircle',   biome: 'autumn',  label: 'The Old Stones',    radius: 10, scale: 1.3 },
-    { asset: 'rockArch',      biome: 'desert',  label: 'The Sandgate',      radius: 11, scale: 1.5 },
-    { asset: 'iceCrown',      biome: 'snow',    label: 'The Frost Crown',   radius: 8, prefer: 'summit',  scale: 1.6 },
-    { asset: 'motherBlossom', biome: 'blossom', label: 'The Mother Blossom', radius: 6, scale: 1.5 },
+    { island: 'home', asset: 'elderTree',     biome: 'meadow',   label: 'The Elder Tree',     radius: 6,  scale: 1.6 },
+    { island: 'home', asset: 'rockSpire',     biome: 'pines',    label: "The Giant's Tooth",  radius: 7,  scale: 1.9 },
+    { island: 'home', asset: 'stoneCircle',   biome: 'autumn',   label: 'The Old Stones',     radius: 10, scale: 1.3 },
+    { island: 'home', asset: 'rockArch',      biome: 'desert',   label: 'The Sandgate',       radius: 11, scale: 1.5 },
+    { island: 'home', asset: 'iceCrown',      biome: 'snow',     label: 'The Frost Crown',    radius: 8,  scale: 1.6, prefer: 'summit' },
+    { island: 'home', asset: 'motherBlossom', biome: 'blossom',  label: 'The Mother Blossom', radius: 6,  scale: 1.5 },
+    { island: 'far',  asset: 'greatBanyan',   biome: 'jungle',   label: 'The Great Banyan',   radius: 7,  scale: 1.9 },
+    { island: 'far',  asset: 'basaltOrgan',   biome: 'lavender', label: 'The Organ Pipes',    radius: 9,  scale: 1.4 },
+    { island: 'far',  asset: 'cinderCone',    biome: 'ash',      label: 'The Cinder Cone',    radius: 26, scale: 1.2, prefer: 'summit' },
+    { island: 'far',  asset: 'drownedStones', biome: 'marsh',    label: 'The Drowned Stones', radius: 10, scale: 1.2, prefer: 'low' },
   ],
 
   // ── The far horizon ───────────────────────────────────────────────────────
@@ -334,6 +380,7 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     // and raises it again when there is headroom.
     adaptive: { enabled: true, targetFps: 55, minScale: 0.55 },
     chunkSize: 110, // props are culled in square chunks this many metres wide
+    farDrawDistance: 520, // trees and other props without their own drawDistance stop being drawn beyond this
     drawDistanceScale: 1, // multiplies every scatter layer's drawDistance
     shadows: true,
     shadowMapSize: 2048,
@@ -372,9 +419,9 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     map: {
       enabled: true,
       key: 'KeyM',
-      resolution: 1400, // pixels across; lower if opening the map stutters
+      resolution: 1800, // pixels across; lower if opening the map stutters
       contourEvery: 8, // metres of height between contour lines
-      scaleBarMetres: 100,
+      scaleBarMetres: 200,
     },
   },
 

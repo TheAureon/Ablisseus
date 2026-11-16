@@ -118,6 +118,111 @@ export function flower(petals = '#f2e6ff', glow = '#b79cff') {
   return g;
 }
 
+// ── The Far Isle's plants and rocks ──────────────────────────────────────────
+
+/** A leaning palm with a crown of drooping fronds. */
+export function palm() {
+  const g = new THREE.Group();
+  const bark = mat('#7a6348');
+  const frond = mat('#3f8a45', { side: THREE.DoubleSide });
+  // The trunk curves: four short sections, each leaning a little further.
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < 4; i++) {
+    const lean = 0.08 + i * 0.07;
+    const section = mesh(new THREE.CylinderGeometry(0.16 - i * 0.02, 0.2 - i * 0.02, 1.7, 6), bark, x + Math.sin(lean) * 0.8, y + 0.8, 0);
+    section.rotation.z = -lean;
+    g.add(section);
+    x += Math.sin(lean) * 1.6;
+    y += Math.cos(lean) * 1.6;
+  }
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const leaf = mesh(new THREE.ConeGeometry(0.42, 2.6, 4), frond, x + Math.cos(a) * 1.1, y - 0.15, Math.sin(a) * 1.1);
+    leaf.scale.z = 0.25; // flatten into a blade
+    leaf.rotation.set(0, -a, -Math.PI / 2 - 0.45); // lie outward and droop
+    leaf.rotation.order = 'YZX';
+    g.add(leaf);
+  }
+  g.add(mesh(new THREE.IcosahedronGeometry(0.3, 0), mat('#5a4a32'), x, y + 0.05, 0));
+  return g;
+}
+
+/** A low fan of fronds. Built as one geometry so it instances cheaply. */
+export function fern(baseColor = '#2c6a35', tipColor = '#69b05a') {
+  const positions = [];
+  const normals = [];
+  const colors = [];
+  const base = new THREE.Color(baseColor);
+  const tip = new THREE.Color(tipColor);
+  const fronds = 7;
+  for (let i = 0; i < fronds; i++) {
+    const a = (i / fronds) * Math.PI * 2 + i * 0.4;
+    const length = 0.55 + (i % 3) * 0.12;
+    const rise = 0.3 + (i % 2) * 0.12;
+    const cx = Math.cos(a);
+    const cz = Math.sin(a);
+    const wx = -cz * 0.1;
+    const wz = cx * 0.1;
+    const mid = [cx * length * 0.5, rise, cz * length * 0.5];
+    const end = [cx * length, rise * 0.55, cz * length]; // arches up, then droops
+    const quads = [
+      [[wx * 0.3, 0, wz * 0.3], [-wx * 0.3, 0, -wz * 0.3], [mid[0] - wx, mid[1], mid[2] - wz], base, base, tip],
+      [[wx * 0.3, 0, wz * 0.3], [mid[0] - wx, mid[1], mid[2] - wz], [mid[0] + wx, mid[1], mid[2] + wz], base, tip, tip],
+      [[mid[0] + wx, mid[1], mid[2] + wz], [mid[0] - wx, mid[1], mid[2] - wz], end, tip, tip, tip],
+    ];
+    for (const [p1, p2, p3, c1, c2, c3] of quads) {
+      // Both faces, normals up, so fronds are lit evenly from either side (as with grass).
+      positions.push(...p1, ...p2, ...p3, ...p2, ...p1, ...p3);
+      for (const c of [c1, c2, c3, c2, c1, c3]) colors.push(c.r, c.g, c.b);
+      for (let n = 0; n < 6; n++) normals.push(0, 1, 0);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })));
+  return g;
+}
+
+/** Tall marsh reeds: like a grass tuft, but much taller, with dark seed heads. */
+export function reed() {
+  const g = grass('#5c7a44', '#b9c486');
+  g.children[0].scale.set(1.4, 3.6, 1.4);
+  // Seed heads only; the stems are the tall blades themselves (fewer pieces to draw).
+  const head = mat('#5a4030');
+  for (const [x, z, h] of [[0.06, 0.02, 1.55], [-0.08, 0.07, 1.35], [0.02, -0.09, 1.7]]) {
+    g.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.24, 4), head, x, h, z));
+  }
+  return g;
+}
+
+/** A small mushroom that glows faintly — lovely at night in the fens. */
+export function glowcap() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.22, 5), mat('#e8e4d4'), 0, 0.11, 0));
+  const cap = new THREE.MeshStandardMaterial({ color: '#2a5a55', emissive: '#49e0c0', emissiveIntensity: 1.6, flatShading: true });
+  g.add(mesh(new THREE.ConeGeometry(0.11, 0.1, 7), cap, 0, 0.26, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.018, 0.024, 0.13, 5), mat('#e8e4d4'), 0.1, 0.065, 0.05));
+  g.add(mesh(new THREE.ConeGeometry(0.065, 0.07, 6), cap, 0.1, 0.16, 0.05));
+  return g;
+}
+
+/** A clump of six-sided basalt columns of different heights. */
+export function basalt(color = '#3d3b3e', columns = 7, spread = 0.55, tallest = 2.6) {
+  const g = new THREE.Group();
+  const stone = mat(color);
+  for (let i = 0; i < columns; i++) {
+    const a = i * 2.4; // golden-angle spiral: packs evenly without a grid look
+    const d = Math.sqrt(i / columns) * spread * 2.2;
+    const h = tallest * (0.35 + 0.65 * Math.abs(Math.sin(i * 1.7 + 0.5))) * (1 - d / (spread * 4));
+    g.add(mesh(new THREE.CylinderGeometry(spread * 0.5, spread * 0.5, h, 6), stone, Math.cos(a) * d, h / 2 - 0.1, Math.sin(a) * d));
+  }
+  return g;
+}
+
 // ── Natural landmarks ────────────────────────────────────────────────────────
 // Large one-off features, one per biome. All are rough stand-ins.
 
@@ -211,6 +316,44 @@ export function iceCrown() {
     const a = (i / 9) * Math.PI * 2 + 0.3;
     const d = 3 + (i % 3) * 1.6;
     shard(Math.cos(a) * d, Math.sin(a) * d, 5 + ((i * 5) % 4) * 2.2, 0.9 + (i % 2) * 0.5, Math.sin(a) * 0.35, -Math.cos(a) * 0.35);
+  }
+  return g;
+}
+
+/** A great wall of basalt columns, like organ pipes. */
+export function basaltOrgan() {
+  const g = basalt('#45434a', 46, 1.15, 15);
+  // A scatter of fallen, broken columns at its foot.
+  const stone = mat('#3a383d');
+  for (let i = 0; i < 6; i++) {
+    const a = i * 1.1;
+    const fallen = mesh(new THREE.CylinderGeometry(0.55, 0.55, 2.2 + (i % 3), 6), stone, Math.cos(a) * 8.2, 0.45, Math.sin(a) * 8.2);
+    fallen.rotation.set(Math.PI / 2, 0, a * 1.7);
+    g.add(fallen);
+  }
+  return g;
+}
+
+/** A small volcanic cone with a glowing crater. */
+export function cinderCone() {
+  const g = new THREE.Group();
+  const ash = mat('#322e2d');
+  const scoria = mat('#4a3a35');
+  g.add(mesh(new THREE.CylinderGeometry(7, 26, 21, 14, 3), ash, 0, 10.5, 0));
+  g.add(mesh(new THREE.CylinderGeometry(8.2, 9.5, 2.2, 12), scoria, 0, 21.2, 0)); // the crater rim
+  const lava = new THREE.MeshStandardMaterial({ color: '#000000', emissive: '#ff5a1c', emissiveIntensity: 3.5 });
+  g.add(mesh(new THREE.CylinderGeometry(6.6, 6.6, 0.3, 12), lava, 0, 21.6, 0));
+  // Old lava runs down the flanks, and rubble round the foot.
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.3 + 0.4;
+    const run = mesh(new THREE.BoxGeometry(2.2, 0.5, 20), scoria, Math.cos(a) * 14.5, 10.4, Math.sin(a) * 14.5);
+    run.rotation.order = 'YXZ';
+    run.rotation.set(0.74, Math.PI / 2 - a, 0);
+    g.add(run);
+  }
+  for (let i = 0; i < 9; i++) {
+    const a = i * 0.7;
+    g.add(blob(new THREE.DodecahedronGeometry(1, 0), ash, Math.cos(a) * (25 + (i % 3) * 2), 0.8, Math.sin(a) * (25 + (i % 3) * 2), 1.6 + (i % 2), 1.2, 1.5, i));
   }
   return g;
 }

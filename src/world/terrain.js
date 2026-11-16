@@ -6,23 +6,32 @@ import { CONFIG } from '../config.js';
 import { applyAtmosphere, NOISE_GLSL } from '../atmosphere.js';
 import { heightNoise, noise2, smoothstep } from './noise.js';
 import { biomeWeights, blend, blendColor } from './biomes.js';
+import { landAt } from './islands.js';
+
+// The sea floor away from every island (the seabed depth, passed through the same beach shaping as everything else).
+const openSeaFloor = (() => {
+  const above = -CONFIG.terrain.seabedDepth - CONFIG.water.level;
+  const b = CONFIG.terrain.beach;
+  return CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
+})();
 
 /** The natural, unmodified ground height. */
 function naturalHeightAt(x, z) {
   const c = CONFIG.terrain;
+  const land = landAt(x, z);
+  if (land <= 0) return openSeaFloor; // nothing to work out far from any island
   let n = 0;
   let amp = 1;
   let freq = c.frequency;
   let norm = 0;
   for (let i = 0; i < c.octaves; i++) {
-    n += amp * heightNoise.noise(x * freq, z * freq);
+    n += amp * heightNoise.noise((x + c.noiseOffset[0]) * freq, (z + c.noiseOffset[1]) * freq);
     norm += amp;
     amp *= c.persistence;
     freq *= c.lacunarity;
   }
   n /= norm;
 
-  const land = 1 - smoothstep(c.islandRadius * c.islandFalloffStart, c.islandRadius, Math.hypot(x, z));
   // Each biome reshapes the land: flatter, hillier, higher or lower.
   const weights = biomeWeights(x, z);
   const height = c.baseHeight + blend(weights, 'heightOffset', 0) + n * c.amplitude * blend(weights, 'heightScale', 1);
@@ -125,45 +134,55 @@ export const terrainUniforms = { uSeaLevel: { value: CONFIG.water.level } };
 /** @param pathTexture optional trail mask from trails.js; its red channel tints the ground into footpath */
 export function createTerrain(pathTexture = null) {
   const c = CONFIG.terrain;
-  const geo = new THREE.PlaneGeometry(c.size, c.size, c.segments, c.segments);
-  geo.rotateX(-Math.PI / 2);
-
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)));
-  geo.computeVertexNormals();
-
-  // Vertex colours from height and steepness.
-  const col = Object.fromEntries(Object.entries(c.colors).map(([k, v]) => [k, new THREE.Color(v)]));
-  const colors = new Float32Array(pos.count * 3);
-  const normal = geo.attributes.normal;
-  const out = new THREE.Color();
-  const alt = new THREE.Color();
+  const { grid, resolution } = ensureHeightGrid();
+  const cells = resolution - 1;
+  const cell = c.size / cells;
   const water = CONFIG.water.level;
 
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    const steep = 1 - normal.getY(i);
+  // Shading normals and vertex colours for the whole grid.
+  const col = Object.fromEntries(Object.entries(c.colors).map(([k, v]) => [k, new THREE.Color(v)]));
+  const normals = new Float32Array(resolution * resolution * 3);
+  const colors = new Float32Array(resolution * resolution * 3);
+  const out = new THREE.Color();
+  const alt = new THREE.Color();
 
-    // Ground colour comes from the biomes here, with a little noise variation.
-    const weights = biomeWeights(x, z);
-    blendColor(weights, 'ground', out);
-    out.lerp(blendColor(weights, 'groundAlt', alt), noise2(x * 0.02, z * 0.02) * 0.5 + 0.5);
-    out.lerp(col.sand, 1 - smoothstep(water + c.sandHeight * 0.5, water + c.sandHeight * 1.5, y));
-    out.lerp(col.seabed, 1 - smoothstep(water - 3, water - 0.3, y));
-    const rockSlope = c.rockSlope / blend(weights, 'rockiness', 1); // some biomes (snow) cling to steeper ground
-    out.lerp(col.rock, smoothstep(rockSlope * 0.7, rockSlope * 1.3, steep));
-    for (const shelf of shelves) {
-      const d = Math.hypot(x - shelf.x, z - shelf.z);
-      if (d < shelf.radius * 1.6) out.lerp(col.shelf, 1 - smoothstep(shelf.radius * 0.9, shelf.radius * 1.6, d));
+  for (let j = 0; j < resolution; j++) {
+    for (let i = 0; i < resolution; i++) {
+      const k = j * resolution + i;
+      const x = (i / cells - 0.5) * c.size;
+      const z = (j / cells - 0.5) * c.size;
+      const y = grid[k];
+
+      // The slope of the ground, from its neighbours.
+      const dx = (grid[k + (i < cells ? 1 : 0)] - grid[k - (i > 0 ? 1 : 0)]) / ((i > 0 && i < cells ? 2 : 1) * cell);
+      const dz = (grid[k + (j < cells ? resolution : 0)] - grid[k - (j > 0 ? resolution : 0)]) / ((j > 0 && j < cells ? 2 : 1) * cell);
+      const length = Math.hypot(dx, 1, dz);
+      normals[k * 3] = -dx / length;
+      normals[k * 3 + 1] = 1 / length;
+      normals[k * 3 + 2] = -dz / length;
+      const steep = 1 - 1 / length;
+
+      if (y < water - 4) {
+        out.copy(col.seabed); // deep sea: no need to work out a biome
+      } else {
+        // Ground colour comes from the biomes here, with a little noise variation.
+        const weights = biomeWeights(x, z);
+        blendColor(weights, 'ground', out);
+        out.lerp(blendColor(weights, 'groundAlt', alt), noise2(x * 0.02, z * 0.02) * 0.5 + 0.5);
+        out.lerp(col.sand, 1 - smoothstep(water + c.sandHeight * 0.5, water + c.sandHeight * 1.5, y));
+        out.lerp(col.seabed, 1 - smoothstep(water - 3, water - 0.3, y));
+        const rockSlope = c.rockSlope / blend(weights, 'rockiness', 1); // some biomes (snow) cling to steeper ground
+        out.lerp(col.rock, smoothstep(rockSlope * 0.7, rockSlope * 1.3, steep));
+        for (const shelf of shelves) {
+          const d = Math.hypot(x - shelf.x, z - shelf.z);
+          if (d < shelf.radius * 1.6) out.lerp(col.shelf, 1 - smoothstep(shelf.radius * 0.9, shelf.radius * 1.6, d));
+        }
+      }
+      colors[k * 3] = out.r;
+      colors[k * 3 + 1] = out.g;
+      colors[k * 3 + 2] = out.b;
     }
-
-    colors[i * 3] = out.r;
-    colors[i * 3 + 1] = out.g;
-    colors[i * 3 + 2] = out.b;
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: c.flatShading });
   // Without trails there is still a (blank) mask, so the shader is the same either way.
@@ -252,10 +271,55 @@ export function createTerrain(pathTexture = null) {
       // Wet ground is glossy.
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.28, groundWet);');
   };
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.receiveShadow = true;
-  mesh.name = 'terrain';
-  return mesh;
+  // Cut the grid into tiles. Each is its own mesh, so the renderer can skip
+  // the ones behind you — and tiles that are nothing but deep sea are never
+  // made at all (the endless seabed under the water stands in for them).
+  const group = new THREE.Group();
+  group.name = 'terrain';
+  const per = Math.ceil(cells / c.tiles); // cells along one side of a tile
+  for (let tj = 0; tj < cells; tj += per) {
+    for (let ti = 0; ti < cells; ti += per) {
+      const w = Math.min(per, cells - ti);
+      const h = Math.min(per, cells - tj);
+      const positions = new Float32Array((w + 1) * (h + 1) * 3);
+      const tileNormals = new Float32Array(positions.length);
+      const tileColors = new Float32Array(positions.length);
+      let highest = -Infinity;
+      for (let j = 0; j <= h; j++) {
+        for (let i = 0; i <= w; i++) {
+          const k = (tj + j) * resolution + ti + i;
+          const o = (j * (w + 1) + i) * 3;
+          positions[o] = ((ti + i) / cells - 0.5) * c.size;
+          positions[o + 1] = grid[k];
+          positions[o + 2] = ((tj + j) / cells - 0.5) * c.size;
+          highest = Math.max(highest, grid[k]);
+          for (let n = 0; n < 3; n++) {
+            tileNormals[o + n] = normals[k * 3 + n];
+            tileColors[o + n] = colors[k * 3 + n];
+          }
+        }
+      }
+      if (highest < water - 5) continue; // open sea
+
+      const index = [];
+      for (let j = 0; j < h; j++) {
+        for (let i = 0; i < w; i++) {
+          const a = j * (w + 1) + i;
+          const b = a + w + 1;
+          index.push(a, b, a + 1, b, b + 1, a + 1);
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(tileNormals, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(tileColors, 3));
+      geo.setIndex(index);
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    }
+  }
+  return group;
 }
 
 /**
@@ -264,25 +328,31 @@ export function createTerrain(pathTexture = null) {
  * clearings have been cut.
  */
 export function createHeightTexture() {
-  // One sample per terrain vertex, so the picture matches the drawn ground
-  // exactly and the waterline in the shader lands where the mesh really is.
-  const size = CONFIG.terrain.size;
-  const cells = CONFIG.terrain.segments;
-  const resolution = cells + 1;
-  const grid = new Float32Array(resolution * resolution);
-  const data = new Uint16Array(resolution * resolution);
-  for (let j = 0; j < resolution; j++) {
-    for (let i = 0; i < resolution; i++) {
-      const k = j * resolution + i;
-      grid[k] = heightAt((i / cells - 0.5) * size, (j / cells - 0.5) * size);
-      data[k] = THREE.DataUtils.toHalfFloat(grid[k]);
-    }
-  }
-  heightGrid = { grid, resolution };
+  const { grid, resolution } = ensureHeightGrid();
+  const data = new Uint16Array(grid.length);
+  for (let k = 0; k < grid.length; k++) data[k] = THREE.DataUtils.toHalfFloat(grid[k]);
   const texture = new THREE.DataTexture(data, resolution, resolution, THREE.RedFormat, THREE.HalfFloatType);
   texture.minFilter = texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
   return texture;
+}
+
+/**
+ * The ground height at every vertex of the ground mesh, worked out once and
+ * shared by the mesh, the water shader and quick lookups. Build it only after
+ * every path and clearing has been cut.
+ */
+function ensureHeightGrid() {
+  if (heightGrid) return heightGrid;
+  const size = CONFIG.terrain.size;
+  const cells = CONFIG.terrain.segments;
+  const resolution = cells + 1;
+  const grid = new Float32Array(resolution * resolution);
+  for (let j = 0; j < resolution; j++) {
+    const z = (j / cells - 0.5) * size;
+    for (let i = 0; i < resolution; i++) grid[j * resolution + i] = heightAt((i / cells - 0.5) * size, z);
+  }
+  return (heightGrid = { grid, resolution });
 }
 
 let heightGrid = null;
@@ -485,7 +555,7 @@ export function createWater(heightTexture) {
 
 /** Nearest walkable, dry point to (x, z), searched in an outward spiral. */
 export function findDryLand(x, z) {
-  for (let r = 0; r < CONFIG.terrain.islandRadius; r += 3) {
+  for (let r = 0; r < 400; r += 3) {
     for (let a = 0; a < Math.PI * 2; a += 0.4) {
       const px = x + Math.cos(a) * r;
       const pz = z + Math.sin(a) * r;
@@ -504,7 +574,7 @@ export function spawnPoint() {
   if (spawn) return spawn;
   const [sx, sz] = CONFIG.player.spawn;
   const water = CONFIG.water.level;
-  for (let r = 0; r < CONFIG.terrain.islandRadius; r += 4) {
+  for (let r = 0; r < 320; r += 4) {
     for (let a = 0; a < Math.PI * 2; a += r ? Math.min(0.5, 6 / r) : 7) {
       const x = sx + Math.cos(a) * r;
       const z = sz + Math.sin(a) * r;

@@ -8,6 +8,7 @@
 import { CONFIG } from './config.js';
 import { heightAt } from './world/terrain.js';
 import { biomeWeights, dominant, biomeLabel, BIOME_NAMES } from './world/biomes.js';
+import { ISLANDS, islandIndexAt, worldBounds } from './world/islands.js';
 
 const INK = '#4a3a28';
 const PAPER = [233, 221, 194];
@@ -18,8 +19,15 @@ export function createMap({ landmarks, trails }) {
   const canvas = document.getElementById('map-canvas');
   const marker = document.getElementById('map-marker');
   const SIZE = M.resolution; // canvas pixels
-  const extent = CONFIG.terrain.islandRadius * 2.3; // metres shown across the map
-  const toMap = (v) => (v / extent + 0.5) * SIZE;
+  const bounds = worldBounds();
+  // The sheet is as wide as the islands need, and as tall — plus room for the title and compass.
+  const extent = bounds.spanX * 1.14; // metres shown across the map
+  const extentZ = Math.max(bounds.spanZ * 1.5, extent * 0.55); // metres shown top to bottom
+  const W = SIZE;
+  const H = Math.round((SIZE * extentZ) / extent / 2) * 2;
+  document.getElementById('map-sheet').style.aspectRatio = `${W} / ${H}`;
+  const toMapX = (x) => ((x - bounds.cx) / extent + 0.5) * W;
+  const toMapZ = (z) => ((z - bounds.cz) / extentZ + 0.5) * H;
   let painted = false;
   let open = false;
 
@@ -34,20 +42,22 @@ export function createMap({ landmarks, trails }) {
 
   function paint() {
     painted = true;
-    canvas.width = canvas.height = SIZE;
+    canvas.width = W;
+    canvas.height = H;
     const ctx = canvas.getContext('2d');
     const water = CONFIG.water.level;
 
     // ── 1. Sample the island ──
-    const S = SIZE / 2; // sample grid; drawn at double size
+    const S = W / 2; // sample grid (columns); drawn at double size
+    const SZ = H / 2; // rows
     const step = extent / S;
-    const heights = new Float32Array(S * S);
-    const biome = new Uint8Array(S * S);
-    const strength = new Float32Array(S * S);
-    for (let j = 0; j < S; j++) {
+    const heights = new Float32Array(S * SZ);
+    const biome = new Uint8Array(S * SZ);
+    const strength = new Float32Array(S * SZ);
+    for (let j = 0; j < SZ; j++) {
       for (let i = 0; i < S; i++) {
-        const x = (i / S - 0.5) * extent;
-        const z = (j / S - 0.5) * extent;
+        const x = bounds.cx + (i / S - 0.5) * extent;
+        const z = bounds.cz + (j / SZ - 0.5) * extentZ;
         const k = j * S + i;
         heights[k] = heightAt(x, z);
         const w = biomeWeights(x, z);
@@ -57,9 +67,9 @@ export function createMap({ landmarks, trails }) {
     }
 
     // ── 2. Paper, sea and land ──
-    const image = ctx.createImageData(S, S);
+    const image = ctx.createImageData(S, SZ);
     const px = image.data;
-    for (let j = 0; j < S; j++) {
+    for (let j = 0; j < SZ; j++) {
       for (let i = 0; i < S; i++) {
         const k = j * S + i;
         const h = heights[k];
@@ -113,32 +123,33 @@ export function createMap({ landmarks, trails }) {
       }
     }
     const small = document.createElement('canvas');
-    small.width = small.height = S;
+    small.width = S;
+    small.height = SZ;
     small.getContext('2d').putImageData(image, 0, 0);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(small, 0, 0, SIZE, SIZE);
+    ctx.drawImage(small, 0, 0, W, H);
 
     const at = (x, z) => {
-      const i = Math.floor((x / extent + 0.5) * S);
-      const j = Math.floor((z / extent + 0.5) * S);
-      return i < 0 || j < 0 || i >= S || j >= S ? -1 : j * S + i;
+      const i = Math.floor(((x - bounds.cx) / extent + 0.5) * S);
+      const j = Math.floor(((z - bounds.cz) / extentZ + 0.5) * SZ);
+      return i < 0 || j < 0 || i >= S || j >= SZ ? -1 : j * S + i;
     };
 
     // ── 3. Little symbols for what grows where ──
-    const spacing = extent / 62;
+    const spacing = extent / 124;
     ctx.lineWidth = SIZE / 900;
-    for (let gz = -31; gz < 31; gz++) {
-      for (let gx = -31; gx < 31; gx++) {
-        const x = (gx + speck(gx, gz) * 0.8) * spacing;
-        const z = (gz + speck(gz + 40, gx) * 0.8) * spacing;
+    for (let gz = -Math.ceil((62 * extentZ) / extent); gz < (62 * extentZ) / extent; gz++) {
+      for (let gx = -62; gx < 62; gx++) {
+        const x = bounds.cx + (gx + speck(gx, gz) * 0.8) * spacing;
+        const z = bounds.cz + (gz + speck(gz + 40, gx) * 0.8) * spacing;
         const k = at(x, z);
         if (k < 0 || heights[k] < water + 1.5 || strength[k] < 0.62) continue;
         if (trails.clearanceAt(x, z) > 0.2) continue;
         const symbol = types[biome[k]].mapSymbol;
         if (!symbol || speck(gx * 3, gz * 7) > (types[biome[k]].mapDensity ?? 0.6)) continue;
-        const cx = toMap(x);
-        const cy = toMap(z);
-        const u = SIZE / 190;
+        const cx = toMapX(x);
+        const cy = toMapZ(z);
+        const u = SIZE / 330;
         const c = ground[biome[k]];
         ctx.fillStyle = `rgb(${c[0] * 0.55},${c[1] * 0.55},${c[2] * 0.55})`;
         ctx.strokeStyle = INK;
@@ -181,13 +192,13 @@ export function createMap({ landmarks, trails }) {
 
     // ── 4. Trails: dashed ink lines ──
     ctx.strokeStyle = '#6b3f24';
-    ctx.lineWidth = SIZE / 380;
+    ctx.lineWidth = SIZE / 520;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.setLineDash([SIZE / 130, SIZE / 170]);
+    ctx.setLineDash([SIZE / 220, SIZE / 300]);
     for (const route of trails.routes) {
       ctx.beginPath();
-      route.forEach(([x, z], i) => (i ? ctx.lineTo(toMap(x), toMap(z)) : ctx.moveTo(toMap(x), toMap(z))));
+      route.forEach(([x, z], i) => (i ? ctx.lineTo(toMapX(x), toMapZ(z)) : ctx.moveTo(toMapX(x), toMapZ(z))));
       ctx.stroke();
     }
     ctx.setLineDash([]);
@@ -206,41 +217,63 @@ export function createMap({ landmarks, trails }) {
       if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
     };
 
-    // Biome names, set where each region is widest and clear of its landmark.
+    // Biome names, set where each region is widest and clear of landmarks —
+    // once per island the biome appears on.
     const taken = landmarks.map((lm) => [lm.x, lm.z]);
-    types.forEach((type, index) => {
-      let best = null;
-      let bestScore = 0;
-      for (let z = -extent / 2; z < extent / 2; z += extent / 40) {
-        for (let x = -extent / 2; x < extent / 2; x += extent / 40) {
-          const k = at(x, z);
-          if (k < 0 || biome[k] !== index || heights[k] < water + 1) continue;
-          if (taken.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < extent * 0.1)) continue;
-          // How much of this biome surrounds the spot?
-          let score = 0;
-          for (let dz = -3; dz <= 3; dz++) {
-            for (let dx = -3; dx <= 3; dx++) {
-              const n = at(x + dx * extent / 40, z + dz * extent / 40);
-              if (n >= 0 && biome[n] === index && heights[n] > water) score += strength[n];
+    const stepX = extent / 70;
+    ISLANDS.forEach((island, islandIndex) => {
+      types.forEach((type, index) => {
+        if (!island.biomes.includes(BIOME_NAMES[index])) return;
+        let best = null;
+        let bestScore = 0;
+        for (let z = island.z - island.radius; z < island.z + island.radius; z += stepX) {
+          for (let x = island.x - island.radius; x < island.x + island.radius; x += stepX) {
+            const k = at(x, z);
+            if (k < 0 || biome[k] !== index || heights[k] < water + 1 || islandIndexAt(x, z) !== islandIndex) continue;
+            if (taken.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < extent * 0.055)) continue;
+            // How much of this biome surrounds the spot?
+            let score = 0;
+            for (let dz = -3; dz <= 3; dz++) {
+              for (let dx = -3; dx <= 3; dx++) {
+                const n = at(x + dx * stepX, z + dz * stepX);
+                if (n >= 0 && biome[n] === index && heights[n] > water) score += strength[n];
+              }
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              best = [x, z];
             }
           }
-          if (score > bestScore) {
-            bestScore = score;
-            best = [x, z];
-          }
         }
-      }
-      if (best && bestScore > 8) {
-        taken.push(best);
-        label(biomeLabel(index).toUpperCase(), toMap(best[0]), toMap(best[1]), SIZE / 62, { spaced: SIZE / 260, color: 'rgba(74,58,40,0.75)' });
-      }
+        if (best && bestScore > 14) {
+          taken.push(best);
+          label(biomeLabel(index).toUpperCase(), toMapX(best[0]), toMapZ(best[1]), SIZE / 105, { spaced: SIZE / 480, color: 'rgba(74,58,40,0.72)' });
+        }
+      });
     });
+
+    // Island names, in the sea just north of each
+    for (const island of ISLANDS) {
+      if (island.label) label(island.label, toMapX(island.x), toMapZ(island.z - island.radius * 0.86) - SIZE / 60, SIZE / 50, { italic: true, spaced: SIZE / 500 });
+    }
+
+    // Sea crossings: a dotted line where you swim from one island to the next
+    ctx.strokeStyle = 'rgba(74,58,40,0.55)';
+    ctx.lineWidth = SIZE / 700;
+    ctx.setLineDash([SIZE / 500, SIZE / 220]);
+    for (const c of trails.crossings ?? []) {
+      ctx.beginPath();
+      ctx.moveTo(toMapX(c.a[0]), toMapZ(c.a[1]));
+      ctx.lineTo(toMapX(c.b[0]), toMapZ(c.b[1]));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
 
     // Camps: a small tent mark
     for (const camp of trails.campfires) {
-      const cx = toMap(camp.x);
-      const cy = toMap(camp.z);
-      const u = SIZE / 130;
+      const cx = toMapX(camp.x);
+      const cy = toMapZ(camp.z);
+      const u = SIZE / 210;
       ctx.fillStyle = '#b4532a';
       ctx.strokeStyle = INK;
       ctx.lineWidth = SIZE / 800;
@@ -255,9 +288,9 @@ export function createMap({ landmarks, trails }) {
 
     // Landmarks: a star and a name
     for (const lm of landmarks) {
-      const cx = toMap(lm.x);
-      const cy = toMap(lm.z);
-      const u = SIZE / 95;
+      const cx = toMapX(lm.x);
+      const cy = toMapZ(lm.z);
+      const u = SIZE / 150;
       ctx.fillStyle = '#8a2f1f';
       ctx.strokeStyle = INK;
       ctx.lineWidth = SIZE / 700;
@@ -270,28 +303,28 @@ export function createMap({ landmarks, trails }) {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      if (lm.label) label(lm.label, cx, cy + u * 2.1, SIZE / 52, { italic: true });
+      if (lm.label) label(lm.label, cx, cy + u * 2.1, SIZE / 82, { italic: true });
     }
 
     // ── 6. Furniture of the map itself: border, title, compass, scale ──
-    const edge = ctx.createRadialGradient(SIZE / 2, SIZE / 2, SIZE * 0.42, SIZE / 2, SIZE / 2, SIZE * 0.74);
+    const edge = ctx.createRadialGradient(W / 2, H / 2, H * 0.5, W / 2, H / 2, W * 0.66);
     edge.addColorStop(0, 'rgba(90,60,30,0)');
     edge.addColorStop(1, 'rgba(90,60,30,0.38)'); // aged, darker toward the edges
     ctx.fillStyle = edge;
-    ctx.fillRect(0, 0, SIZE, SIZE);
+    ctx.fillRect(0, 0, W, H);
 
     ctx.strokeStyle = INK;
     ctx.lineWidth = SIZE / 260;
-    ctx.strokeRect(SIZE * 0.022, SIZE * 0.022, SIZE * 0.956, SIZE * 0.956);
+    ctx.strokeRect(W * 0.016, W * 0.016, W - W * 0.032, H - W * 0.032);
     ctx.lineWidth = SIZE / 900;
-    ctx.strokeRect(SIZE * 0.032, SIZE * 0.032, SIZE * 0.936, SIZE * 0.936);
+    ctx.strokeRect(W * 0.023, W * 0.023, W - W * 0.046, H - W * 0.046);
 
-    label('TERRA ABLISSEUS', SIZE / 2, SIZE * 0.075, SIZE / 30, { spaced: SIZE / 85 });
+    label('TERRA ABLISSEUS', W / 2, W * 0.06, SIZE / 36, { spaced: SIZE / 95 });
 
     // Compass rose (north is up)
-    const rx = SIZE * 0.9;
-    const ry = SIZE * 0.875;
-    const rr = SIZE * 0.045;
+    const rr = SIZE * 0.032;
+    const rx = W - W * 0.075;
+    const ry = H - W * 0.075;
     ctx.lineWidth = SIZE / 800;
     ctx.beginPath();
     ctx.arc(rx, ry, rr * 0.72, 0, Math.PI * 2);
@@ -306,13 +339,13 @@ export function createMap({ landmarks, trails }) {
       ctx.closePath();
       ctx.fill();
     }
-    label('N', rx, ry - rr * 1.3, SIZE / 48);
+    label('N', rx, ry - rr * 1.35, SIZE / 62);
 
     // Scale bar
     const metres = M.scaleBarMetres;
     const barLength = (metres / extent) * SIZE;
-    const bx = SIZE * 0.07;
-    const by = SIZE * 0.925;
+    const bx = W * 0.055;
+    const by = H - W * 0.05;
     ctx.fillStyle = INK;
     ctx.fillRect(bx, by, barLength, SIZE / 300);
     ctx.fillRect(bx, by - SIZE / 150, SIZE / 600, SIZE / 85);
@@ -329,8 +362,8 @@ export function createMap({ landmarks, trails }) {
   /** Moves the "you are here" arrow. Call every frame. */
   function update(position, yaw) {
     if (!open) return;
-    marker.style.left = `${(position.x / extent + 0.5) * 100}%`;
-    marker.style.top = `${(position.z / extent + 0.5) * 100}%`;
+    marker.style.left = `${((position.x - bounds.cx) / extent + 0.5) * 100}%`;
+    marker.style.top = `${((position.z - bounds.cz) / extentZ + 0.5) * 100}%`;
     marker.style.transform = `translate(-50%, -50%) rotate(${-yaw}rad)`;
   }
 

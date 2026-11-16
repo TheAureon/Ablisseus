@@ -8,12 +8,12 @@ import { CONFIG } from '../config.js';
 import { heightAt, slopeAt, findDryLand, spawnPoint, addPad } from './terrain.js';
 import { biomeWeights, biomeIndex } from './biomes.js';
 import { flattenTemplate } from './scatter.js';
+import { ISLANDS, islandByName, islandIndexAt } from './islands.js';
 
-/** Decides where every landmark goes. Returns [{ asset, label, x, z, scale, rotation, radius }]. */
+/** Decides where every landmark goes. Returns [{ asset, label, x, z, scale, rotation, radius, island }]. */
 export function placeLandmarks() {
   const placed = [];
   const [sx, sz] = spawnPoint();
-  const reach = CONFIG.terrain.islandRadius * 0.82;
 
   for (const lm of CONFIG.landmarks) {
     let spot = null;
@@ -25,23 +25,25 @@ export function placeLandmarks() {
         console.warn(`[landmarks] Unknown biome "${lm.biome}"`);
         continue;
       }
+      const island = islandByName(lm.island) ?? ISLANDS[0];
+      const reach = island.radius * 0.82;
       // Try gentle ground first; in rugged biomes settle for steeper.
       for (const maxSlope of [0.3, 0.55, 0.9]) {
         let best = -Infinity;
-        for (let x = -reach; x <= reach; x += 12) {
-          for (let z = -reach; z <= reach; z += 12) {
-            if (Math.hypot(x, z) > reach) continue;
+        for (let x = island.x - reach; x <= island.x + reach; x += 12) {
+          for (let z = island.z - reach; z <= island.z + reach; z += 12) {
+            if (Math.hypot(x - island.x, z - island.z) > reach) continue;
             const weight = biomeWeights(x, z)[biome];
             if (weight < 0.6) continue;
             if (Math.hypot(x - sx, z - sz) < (lm.minSpawnDistance ?? 90)) continue;
             if (placed.some((p) => Math.hypot(x - p.x, z - p.z) < 130)) continue;
             const height = heightAt(x, z);
-            if (height < CONFIG.water.level + 2.5) continue;
+            if (height < CONFIG.water.level + (lm.prefer === 'low' ? 0.7 : 2.5)) continue;
             const slope = slopeAt(x, z);
             if (slope > maxSlope) continue;
             // Deep inside the biome, on gentle ground, ideally a little raised
             // (or as high as possible for `prefer: 'summit'`).
-            const lift = lm.prefer === 'summit' ? height * 0.05 : Math.min(height, 25) * 0.015;
+            const lift = lm.prefer === 'summit' ? height * 0.05 : lm.prefer === 'low' ? -height * 0.25 : Math.min(height, 25) * 0.015;
             const score = weight * 2 - slope * 4 + lift;
             if (score > best) {
               best = score;
@@ -66,6 +68,7 @@ export function placeLandmarks() {
       scale: lm.scale ?? 1,
       rotation: lm.rotation ?? 0,
       radius,
+      island: islandIndexAt(spot[0], spot[1]),
     });
   }
   return placed;

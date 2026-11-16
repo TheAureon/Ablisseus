@@ -41,7 +41,7 @@
       }
       #map.show { opacity: 1; }
       #map-sheet {
-        position: relative; width: min(88vh, 88vw); height: min(88vh, 88vw);
+        position: relative; width: min(94vw, 150vh); max-height: 90vh; aspect-ratio: 1; /* shape set by map.js */
         box-shadow: 0 10px 50px rgba(0,0,0,0.6); transform: rotate(-0.6deg) scale(0.97); transition: transform 0.35s ease;
       }
       #map.show #map-sheet { transform: rotate(-0.6deg) scale(1); }
