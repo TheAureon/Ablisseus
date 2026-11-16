@@ -81,6 +81,7 @@ export const CONFIG = {
     lacunarity: 2.1,
     seabedDepth: 8,
     flatShading: false, // true = faceted low-poly look
+    detail: 0.5, // fine unevenness in how the ground catches light, close up (0 = perfectly smooth)
     colors: {
       // (grass/ground colours are per biome, below)
       sand: '#cdbb8e',
@@ -106,6 +107,8 @@ export const CONFIG = {
     opacity: 0.86,
     skyTint: 0.2, // how much the water picks up the horizon colour
     foam: 1, // 0 = no foam … 1 = full
+    reflection: 0.7, // how strongly the surface mirrors the sky at a glancing angle
+    caustics: 0.5, // dancing light on the bottom in the shallows (0 = off)
     waves: {
       height: 0.16, // metres the swell rises and falls (0 = flat calm)
       length: 34, // metres between crests
@@ -234,8 +237,12 @@ export const CONFIG = {
     ],
   },
 
-  // Air thins out as you climb: fog falls away with height, opening long views.
-  atmosphere: { clearHeight: 40 }, // metres of climb that halve the fog (0 = fog ignores height)
+  // Fog behaves like air: it lies low, thins as you climb, and glows toward the sun.
+  atmosphere: {
+    mistHeight: 38, // metres of height over which the mist thins out
+    highAirFog: 0.3, // share of the fog still present far above the mist (0..1)
+    sunGlow: 0.16, // how much the haze brightens when you look toward the sun
+  },
 
   // ── Trails ────────────────────────────────────────────────────────────────
   // Footpaths from the starting camp to every landmark, planned automatically
@@ -271,7 +278,11 @@ export const CONFIG = {
 
   lanterns: { dayGlow: 0.5, nightGlow: 5 }, // how bright the lantern panes are
 
-  wind: { speed: 1.4 },
+  wind: {
+    speed: 1.4,
+    direction: [0.8, 0.6], // which way gusts travel (x, z)
+    gustLength: 38, // metres between gusts rolling across the grass
+  },
 
   // ── Time of day ───────────────────────────────────────────────────────────
   // t: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset.
@@ -327,6 +338,8 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     shadows: true,
     shadowMapSize: 2048,
     shadowDistance: 70, // radius around the player that receives shadows
+    // Finishing touches applied to the whole picture (1 = unchanged for saturation/contrast, 0 = off for the rest).
+    grade: { enabled: true, saturation: 1.08, contrast: 1.03, vignette: 0.22, warmth: 0.6 },
     bloom: { enabled: true, strength: 0.35, radius: 0.7, threshold: 0.9 },
   },
 
@@ -334,17 +347,18 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
   // All sound is synthesised; see audio.js. Set any volume to 0 to remove it.
   audio: {
     masterVolume: 1,
-    windVolume: 0.1,
-    leavesVolume: 0.03,
+    softness: 5200, // everything is rolled off above this pitch (Hz); lower = mellower, higher = crisper
+    windVolume: 0.09,
+    leavesVolume: 0.022,
     waterVolume: 0.1,
     fireVolume: 0.14,
     birdVolume: 0.035,
-    cricketVolume: 0.012,
+    cricketVolume: 0.007,
     owlVolume: 0.03,
     aweVolume: 0.05, // a deep, slow tone that swells on high ground and at landmarks
     altitudeWind: 1.2, // extra wind at the top of the mountains
     footsteps: true, // soft synthesised footfalls
-    footstepVolume: 0.1,
+    footstepVolume: 0.085,
     music: null, // e.g. 'audio/ambient.mp3' (put the file in /audio)
     musicVolume: 0.5,
   },

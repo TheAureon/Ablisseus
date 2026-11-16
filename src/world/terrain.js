@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
+import { applyAtmosphere, NOISE_GLSL } from '../atmosphere.js';
 import { heightNoise, noise2, smoothstep } from './noise.js';
 import { biomeWeights, blend, blendColor } from './biomes.js';
 
@@ -169,6 +170,9 @@ export function createTerrain(pathTexture = null) {
   const pathMap = pathTexture ?? new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
   pathMap.needsUpdate = true;
   material.onBeforeCompile = (shader) => {
+    applyAtmosphere(shader);
+    shader.uniforms.uCaustics = { value: CONFIG.water.caustics };
+    shader.uniforms.uGroundDetail = { value: c.detail };
     shader.uniforms.uPathMap = { value: pathMap };
     shader.uniforms.uPathColor = { value: new THREE.Color(CONFIG.trails.color) };
     shader.uniforms.uPathStrength = { value: CONFIG.trails.strength };
@@ -191,12 +195,14 @@ export function createTerrain(pathTexture = null) {
         uniform float uBeachTop;
         varying vec2 vPathUv;
         varying vec3 vGround;
+        uniform float uTime;
+        uniform float uCaustics;
+        uniform float uGroundDetail;
         float groundWet = 0.0;
-        float pathHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float pathNoise(vec2 p) {
-          vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
-          return mix(mix(pathHash(i), pathHash(i + vec2(1.0, 0.0)), f.x), mix(pathHash(i + vec2(0.0, 1.0)), pathHash(i + vec2(1.0, 1.0)), f.x), f.y);
-        }`,
+        ${NOISE_GLSL}
+        float pathNoise(vec2 p) { return aNoise(p); }
+        // Fine unevenness of the ground, used to roughen how it catches the light.
+        float groundBump(vec2 p) { return aNoise(p * 0.9) * 0.65 + aNoise(p * 2.6) * 0.35; }`,
       )
       .replace(
         '#include <color_fragment>',
@@ -213,9 +219,35 @@ export function createTerrain(pathTexture = null) {
         float beach = 1.0 - smoothstep(uBeachTop - 0.4, uBeachTop + 0.3, vGround.y);
         float grains = pathNoise(vGroundXZ * 9.0) * 0.6 + pathNoise(vGroundXZ * 23.0) * 0.4;
         float ripples = sin((vGround.y - uSeaLevel) * 26.0 + pathNoise(vGroundXZ * 0.7) * 5.0);
-        diffuseColor.rgb *= 1.0 + beach * ((grains - 0.5) * 0.14 + ripples * 0.025);
+        diffuseColor.rgb *= 1.0 + beach * ((grains - 0.5) * 0.045 + ripples * 0.018);
         groundWet = 1.0 - smoothstep(uSeaLevel + uWetReach * 0.35, uSeaLevel + uWetReach + (ragged - 0.5) * 0.12, vGround.y);
-        diffuseColor.rgb *= mix(1.0, 0.68, groundWet);`,
+        diffuseColor.rgb *= mix(1.0, 0.68, groundWet);
+
+        // Broad, soft variation so large areas are never one flat colour.
+        diffuseColor.rgb *= 0.93 + 0.14 * aNoise(vGroundXZ * 0.021 + 7.0);
+
+        // Under water: ripples of light dance across the bottom in the shallows.
+        float under = uSeaLevel - vGround.y;
+        if (under > 0.0 && uCaustics > 0.0) {
+          vec2 cp = vGroundXZ * 0.55;
+          float c1 = aNoise(cp + vec2(uTime * 0.28, uTime * 0.17));
+          float c2 = aNoise(cp * 1.31 - vec2(uTime * 0.22, uTime * 0.31) + 11.0);
+          float web = pow(1.0 - abs(c1 - c2), 9.0);
+          diffuseColor.rgb *= 1.0 + web * uCaustics * smoothstep(0.0, 0.25, under) * (1.0 - smoothstep(1.2, 3.5, under)) * 1.6;
+        }`,
+      )
+      // Roughen the surface: lean the shading normal by the slope of the fine bumps, fading out with distance.
+      .replace(
+        '#include <normal_fragment_begin>',
+        `#include <normal_fragment_begin>
+        float bumpFade = 1.0 - smoothstep(18.0, 90.0, length(vViewPosition));
+        if (bumpFade > 0.0) {
+          float b0 = groundBump(vGround.xz);
+          float bx = groundBump(vGround.xz + vec2(0.2, 0.0));
+          float bz = groundBump(vGround.xz + vec2(0.0, 0.2));
+          vec3 lean = vec3((b0 - bx), 0.0, (b0 - bz)) * uGroundDetail * bumpFade * (1.0 - groundWet * 0.7);
+          normal = normalize(normal + (viewMatrix * vec4(lean, 0.0)).xyz);
+        }`,
       )
       // Wet ground is glossy.
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.28, groundWet);');
@@ -316,6 +348,7 @@ export function createWater(heightTexture) {
     uShallowColor: { value: new THREE.Color(w.shallowColor) },
     uShallowDepth: { value: w.shallowDepth },
     uFoam: { value: w.foam },
+    uReflection: { value: w.reflection },
   };
 
   const material = new THREE.MeshStandardMaterial({ color: w.color, transparent: true, opacity: w.opacity, roughness: 0.16, metalness: 0.1 });
@@ -332,6 +365,7 @@ export function createWater(heightTexture) {
            + sin(dot(p, vec2(0.95, -0.31)) * k * 2.9 + t * 1.83) * 0.20;
     }`;
   material.onBeforeCompile = (shader) => {
+    applyAtmosphere(shader);
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${waveFunction}\nuniform float uWaveHeight;\nvarying vec3 vWater;`)
@@ -358,11 +392,11 @@ export function createWater(heightTexture) {
         uniform float uShallowDepth;
         uniform float uFoam;
         varying vec3 vWater;
-        float wHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float wNoise(vec2 p) {
-          vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
-          return mix(mix(wHash(i), wHash(i + vec2(1.0, 0.0)), f.x), mix(wHash(i + vec2(0.0, 1.0)), wHash(i + vec2(1.0, 1.0)), f.x), f.y);
-        }
+        uniform vec3 uSkyColor;
+        uniform float uReflection;
+        float waterFoam = 0.0;
+        ${NOISE_GLSL}
+        float wNoise(vec2 p) { return aNoise(p); }
         // Surface detail used for lighting: the swell plus two layers of drifting ripples.
         float surface(vec2 p) {
           return swell(p) * 0.35
@@ -390,6 +424,7 @@ export function createWater(heightTexture) {
         float sets = sin(depth * 6.5 + uTime * 1.3 + wNoise(vWater.xz * 0.12) * 6.0);
         float rollers = smoothstep(0.82, 1.0, sets) * smoothstep(0.03, 0.18, depth) * (1.0 - smoothstep(0.5, 1.5, depth)) * smoothstep(0.35, 0.7, lace);
         float foam = clamp(edge * 0.9 + rollers * 0.75, 0.0, 1.0) * uFoam * smoothstep(-0.08, -0.02, depth);
+        waterFoam = foam;
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), foam);
         diffuseColor.a = max(diffuseColor.a, foam * 0.92);`,
       )
@@ -403,6 +438,14 @@ export function createWater(heightTexture) {
         float sz = surface(vWater.xz + vec2(0.0, 0.4));
         vec3 rippled = normalize(vec3(-(sx - s0) / 0.4 * rippleFade, 1.0, -(sz - s0) / 0.4 * rippleFade));
         normal = normalize((viewMatrix * vec4(rippled, 0.0)).xyz);`,
+      )
+      // Seen at a glancing angle, water mirrors the sky; looking straight down, you see into it.
+      .replace(
+        '#include <opaque_fragment>',
+        `float glance = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 4.0) * uReflection * (1.0 - waterFoam);
+        outgoingLight = mix(outgoingLight, uSkyColor, glance);
+        diffuseColor.a = max(diffuseColor.a, glance);
+        #include <opaque_fragment>`,
       );
   };
 

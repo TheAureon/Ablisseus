@@ -60,21 +60,52 @@ export function startAudio() {
   master = ctx.createGain();
   master.gain.value = 0;
   master.gain.linearRampToValueAtTime(c.masterVolume, ctx.currentTime + 3); // fade in
-  master.connect(ctx.destination);
+  // Everything passes through a gentle roll-off of the highest pitches and a
+  // soft limiter, so nothing hisses or jumps out.
+  const soften = ctx.createBiquadFilter();
+  soften.type = 'lowpass';
+  soften.frequency.value = c.softness;
+  soften.Q.value = 0.3;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -20;
+  limiter.knee.value = 24;
+  limiter.ratio.value = 3;
+  limiter.attack.value = 0.02;
+  limiter.release.value = 0.4;
+  master.connect(soften).connect(limiter).connect(ctx.destination);
 
   noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
   const data = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  // Pink noise rather than white: equal energy per octave, which is how wind,
+  // surf and rustling actually sound. (White noise is all hiss.)
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  for (let i = 0; i < data.length; i++) {
+    const white = Math.random() * 2 - 1;
+    b0 = 0.99886 * b0 + white * 0.0555179;
+    b1 = 0.99332 * b1 + white * 0.0750759;
+    b2 = 0.969 * b2 + white * 0.153852;
+    b3 = 0.8665 * b3 + white * 0.3104856;
+    b4 = 0.55 * b4 + white * 0.5329522;
+    b5 = -0.7616 * b5 - white * 0.016898;
+    data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.16;
+    b6 = white * 0.115926;
+  }
+  // Blend the last moments into the first so the loop has no audible seam.
+  const seam = Math.floor(ctx.sampleRate * 0.25);
+  for (let i = 0; i < seam; i++) {
+    const t = i / seam;
+    data[data.length - seam + i] = data[data.length - seam + i] * (1 - t) + data[i] * t;
+  }
 
   layers.wind = noiseLayer('lowpass', 400, 0.6);
   wobble(layers.wind.filter.frequency, 0.07, 180);
   wobble(layers.wind.filter.frequency, 0.19, 70);
 
-  layers.leaves = noiseLayer('bandpass', 3400, 0.5);
-  wobble(layers.leaves.filter.frequency, 0.11, 900);
+  layers.leaves = noiseLayer('bandpass', 2300, 0.35);
+  wobble(layers.leaves.filter.frequency, 0.11, 500);
 
-  layers.water = noiseLayer('lowpass', 850, 0.4);
-  wobble(layers.water.filter.frequency, 0.16, 380); // waves washing in and out
+  layers.water = noiseLayer('lowpass', 700, 0.4);
+  wobble(layers.water.filter.frequency, 0.16, 300); // waves washing in and out
 
   layers.fire = noiseLayer('lowpass', 210, 0.5);
 
@@ -107,7 +138,7 @@ export function startAudio() {
 }
 
 /** One short synthesised note: a sine gliding between pitches, at a place in the stereo field. */
-function tone({ from, to = from, start, length, volume, pan = 0, attack = 0.01, type = 'sine' }) {
+function tone({ from, to = from, start, length, volume, pan = 0, attack = 0.018, type = 'sine' }) {
   const osc = ctx.createOscillator();
   osc.type = type;
   osc.frequency.setValueAtTime(from, start);
@@ -152,7 +183,7 @@ const BIRD_SONGS = [
 ];
 
 function cricketChirp(t, volume, pan, pitch) {
-  for (let i = 0; i < 3; i++) tone({ from: pitch, start: t + i * 0.034, length: 0.022, volume, pan, attack: 0.004 });
+  for (let i = 0; i < 3; i++) tone({ from: pitch, start: t + i * 0.038, length: 0.028, volume, pan, attack: 0.009 });
 }
 
 function owlHoot(t, volume, pan) {
@@ -190,10 +221,10 @@ export function updateSoundscape(dt, env) {
   const now = ctx.currentTime;
   const set = (layer, volume) => layer.gain.gain.setTargetAtTime(volume, now, 0.9);
 
-  set(layers.wind, c.windVolume * env.wind);
-  set(layers.leaves, c.leavesVolume * env.leaves);
-  set(layers.water, c.waterVolume * env.water);
-  set(layers.fire, c.fireVolume * env.fire * 0.7);
+  set(layers.wind, c.windVolume * env.wind * 1.6);
+  set(layers.leaves, c.leavesVolume * env.leaves * 3);
+  set(layers.water, c.waterVolume * env.water * 1.6);
+  set(layers.fire, c.fireVolume * env.fire * 0.9);
   layers.awe.gain.gain.setTargetAtTime(c.aweVolume * (env.awe ?? 0), now, 3.5); // swells and fades slowly
 
   // Birds by day
@@ -208,7 +239,7 @@ export function updateSoundscape(dt, env) {
   const crickets = env.crickets * env.night;
   timers.cricket -= dt;
   if (timers.cricket <= 0) {
-    if (crickets > 0.03) cricketChirp(now + 0.03, c.cricketVolume * rand(0.3, 1) * crickets, rand(-1, 1), pick([4100, 4350, 4600, 3900]));
+    if (crickets > 0.03) cricketChirp(now + 0.03, c.cricketVolume * rand(0.3, 1) * crickets, rand(-1, 1), pick([3300, 3500, 3700, 3150]));
     timers.cricket = rand(0.12, 0.5) / Math.max(crickets, 0.2);
   }
 
@@ -229,11 +260,11 @@ export function updateSoundscape(dt, env) {
 
 // Footsteps: a short burst of filtered noise, shaped by what is underfoot.
 const SURFACES = {
-  grass: { type: 'lowpass', frequency: 520, length: 0.13, volume: 1 },
-  sand: { type: 'lowpass', frequency: 900, length: 0.2, volume: 0.7 },
-  snow: { type: 'bandpass', frequency: 1900, length: 0.17, volume: 1.1 },
-  path: { type: 'bandpass', frequency: 1300, length: 0.09, volume: 1.2 },
-  water: { type: 'bandpass', frequency: 1400, length: 0.28, volume: 1 },
+  grass: { type: 'lowpass', frequency: 480, length: 0.14, volume: 1.6 },
+  sand: { type: 'lowpass', frequency: 700, length: 0.2, volume: 1.2 },
+  snow: { type: 'bandpass', frequency: 1300, length: 0.18, volume: 1.5 },
+  path: { type: 'bandpass', frequency: 950, length: 0.1, volume: 1.6 },
+  water: { type: 'bandpass', frequency: 1000, length: 0.3, volume: 1.5 },
 };
 
 export function playFootstep(strength = 1, surface = 'grass') {
@@ -250,7 +281,7 @@ export function playFootstep(strength = 1, surface = 'grass') {
   filter.Q.value = 0.8;
   const gain = ctx.createGain();
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(c.footstepVolume * s.volume * strength * rand(0.75, 1), now + 0.012);
+  gain.gain.linearRampToValueAtTime(c.footstepVolume * s.volume * strength * rand(0.75, 1), now + 0.02); // a soft onset, not a click
   gain.gain.exponentialRampToValueAtTime(0.0001, now + s.length);
 
   source.connect(filter).connect(gain).connect(master);

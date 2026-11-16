@@ -6,14 +6,16 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import GUI from 'lil-gui';
 
 import { CONFIG } from './config.js';
+import { atmosphere, GradeShader } from './atmosphere.js'; // (first: it upgrades the fog for every material made after)
 import { loadAssets } from './assets.js';
 import { createTerrain, createWater, createHeightTexture, terrainUniforms, waterNearness, heightAt } from './world/terrain.js';
 import { placeTidePools } from './world/shore.js';
 import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOME_NAMES } from './world/biomes.js';
-import { createScatter, createPlacedProps, updateScatter, windUniforms } from './world/scatter.js';
+import { createScatter, createPlacedProps, updateScatter } from './world/scatter.js';
 import { placeLandmarks, createLandmarks } from './world/landmarks.js';
 import { createTrails } from './world/trails.js';
 import { createCampfires } from './world/campfire.js';
@@ -57,6 +59,9 @@ composer.setSize(innerWidth, innerHeight);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), bloomCfg.strength, bloomCfg.radius, bloomCfg.threshold);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(bloom);
+const grade = new ShaderPass(GradeShader);
+grade.enabled = CONFIG.render.grade.enabled;
+composer.addPass(grade);
 composer.addPass(new OutputPass());
 
 addEventListener('resize', () => {
@@ -154,6 +159,7 @@ if (CONFIG.debug.gui) {
   gui.add(CONFIG.body, 'enabled').name('show body');
   gui.add(bloomCfg, 'enabled').name('bloom');
   gui.add(bloomCfg, 'strength', 0, 2, 0.01).name('bloom strength');
+  gui.add(grade, 'enabled').name('colour grade');
   gui.add(CONFIG.render, 'fov', 40, 100, 1).name('field of view');
   gui.add(CONFIG.render, 'drawDistanceScale', 0.3, 3, 0.05).name('draw distance');
   gui.add(CONFIG.render.adaptive, 'enabled').name('auto resolution');
@@ -265,8 +271,6 @@ renderer.setAnimationLoop(() => {
 
   // Height above the sea: the air clears as you climb, and the view opens.
   const altitude = Math.max(0, camera.position.y - CONFIG.player.eyeHeight - CONFIG.water.level);
-  const clear = CONFIG.atmosphere.clearHeight;
-  const thinAir = clear > 0 ? 1 / (1 + altitude / clear) : 1;
   const snowIndex = biomeIndex('snow');
   const aurora = THREE.MathUtils.lerp(CONFIG.sky.aurora.strength, CONFIG.sky.aurora.inSnow, snowIndex >= 0 ? weights[snowIndex] : 0);
 
@@ -291,10 +295,15 @@ renderer.setAnimationLoop(() => {
     awe: Math.max(THREE.MathUtils.smoothstep(altitude, 22, 70), currentLandmark ? 0.8 : 0),
   });
 
-  sky.update(live.time, camera.position, live.fog * biomeFog * thinAir, { time: elapsed, aurora });
+  sky.update(live.time, camera.position, live.fog * biomeFog, { time: elapsed, aurora });
   horizon.update(sky.state, sky.lightDir);
+
+  // Tell every shader what the light is doing.
+  atmosphere.uTime.value = elapsed;
+  atmosphere.uFogSunDir.value.copy(sky.lightDir);
+  atmosphere.uFogSunColor.value.copy(sky.state.lightColor).multiplyScalar(Math.min(sky.state.lightIntensity, 3) * CONFIG.atmosphere.sunGlow);
+  atmosphere.uSkyColor.value.copy(sky.state.skyHorizon).lerp(sky.state.skyTop, 0.35);
   motes.update(elapsed, camera.position, sky.state.motes, moteColor);
-  windUniforms.uTime.value = elapsed;
 
   waterColor.copy(water.userData.baseColor).lerp(sky.state.skyHorizon, CONFIG.water.skyTint);
   water.material.color.copy(waterColor);

@@ -4,35 +4,68 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
+import { applyAtmosphere } from '../atmosphere.js';
 import { heightAt, approxHeightAt, approxSlopeAt } from './terrain.js';
 import { noise2, seededRandom, smoothstep } from './noise.js';
 import { biomeWeights, biomeIndex } from './biomes.js';
 
-/** Shared wind clock — main.js advances `uTime.value` every frame. */
-export const windUniforms = { uTime: { value: 0 } };
-
-function addSway(material, amount) {
+function addSway(material, amount, height, thin) {
   const m = material.clone();
   m.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = windUniforms.uTime;
+    applyAtmosphere(shader);
     shader.uniforms.uSway = { value: amount };
     shader.uniforms.uWindSpeed = { value: CONFIG.wind.speed };
+    shader.uniforms.uWindDir = { value: new THREE.Vector2(...CONFIG.wind.direction).normalize() };
+    shader.uniforms.uGustLength = { value: CONFIG.wind.gustLength };
+    shader.uniforms.uPlantHeight = { value: Math.max(height, 0.05) };
+    shader.uniforms.uThin = { value: thin ? 1 : 0 };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uSway;\nuniform float uWindSpeed;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uSway;\nuniform float uWindSpeed;\nuniform vec2 uWindDir;\nuniform float uGustLength;\nuniform float uPlantHeight;\nvarying float vPlantHeight;')
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
+        vPlantHeight = clamp(position.y / uPlantHeight, 0.0, 1.0);
         #ifdef USE_INSTANCING
-          float swayPhase = instanceMatrix[3].x * 0.35 + instanceMatrix[3].z * 0.27;
+          vec2 plantAt = instanceMatrix[3].xz;
+          // The wind's direction, seen from this (randomly turned) plant's own point of view.
+          vec3 windLocal = transpose(mat3(instanceMatrix)) * vec3(uWindDir.x, 0.0, uWindDir.y);
+          windLocal /= max(dot(windLocal, windLocal), 1e-5);
+          float plantScale = length(instanceMatrix[0].xyz);
         #else
-          float swayPhase = 0.0;
+          vec2 plantAt = vec2(0.0);
+          vec3 windLocal = vec3(uWindDir.x, 0.0, uWindDir.y);
+          float plantScale = 1.0;
         #endif
-        float swayBend = max(transformed.y, 0.0) * uSway;
-        transformed.x += sin(uTime * uWindSpeed + swayPhase) * swayBend;
-        transformed.z += cos(uTime * uWindSpeed * 0.7 + swayPhase * 1.3) * swayBend * 0.6;`,
+        // Gusts roll across the land as broad waves, with a quicker flutter on top.
+        float along = dot(plantAt, uWindDir);
+        float across = dot(plantAt, vec2(-uWindDir.y, uWindDir.x));
+        float t = uTime * uWindSpeed;
+        float gust = sin(along * 6.2831 / uGustLength - t * 0.9 + sin(across * 0.05) * 2.0) * 0.5 + 0.5;
+        gust = gust * gust;
+        float flutter = sin(t * 3.3 + along * 1.1 + across * 0.7) * 0.22;
+        float lean = (0.25 + gust * 0.9 + flutter) * uSway;
+        float reach = max(transformed.y, 0.0);
+        transformed += windLocal * lean * reach * plantScale;
+        transformed.y -= lean * lean * reach * 0.35;   // a bent stem is a little shorter`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uSunDir;\nuniform vec3 uSunColor;\nuniform float uThin;\nvarying float vPlantHeight;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        // Darker where the plant meets the ground, brighter at the tips.
+        diffuseColor.rgb *= mix(0.72, 1.08, smoothstep(0.0, 0.85, vPlantHeight));`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        // Thin leaves glow when the sun is behind them.
+        vec3 sunView = (viewMatrix * vec4(uSunDir, 0.0)).xyz;
+        float backlit = pow(max(dot(normalize(-vViewPosition), sunView), 0.0), 3.0);
+        totalEmissiveRadiance += diffuseColor.rgb * uSunColor * backlit * vPlantHeight * uThin * 3.2;`,
       );
   };
-  m.customProgramCacheKey = () => 'sway';
+  m.customProgramCacheKey = () => 'sway2';
   return m;
 }
 
@@ -99,8 +132,13 @@ export function flattenTemplate(template, layer = {}) {
 
   const parts = [];
   for (const [source, geometries] of byMaterial) {
-    const material = layer.sway ? addSway(source, layer.sway) : source;
     const merged = geometries.length > 1 ? mergeGeometries(geometries) : geometries[0];
+    let material = source;
+    if (layer.sway) {
+      (merged ?? geometries[0]).computeBoundingBox();
+      // Small plants that don't cast shadows (grass, flowers) are treated as thin and let light through.
+      material = addSway(source, layer.sway, (merged ?? geometries[0]).boundingBox.max.y, !layer.castShadow);
+    }
     // Geometries with mismatched attributes can't be welded; keep them separate.
     for (const geometry of merged ? [merged] : geometries) parts.push({ geometry, material });
   }

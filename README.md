@@ -88,6 +88,7 @@ src/
   player.js        first-person movement and input
   body.js          your own body, seen when looking down
   map.js           the map (M), drawn from the world's own data
+  atmosphere.js    shared shading: height fog, sun-lit haze, live light values, colour grade
   audio.js         synthesised soundscape: wind, leaves, water, fire, birds, crickets, footsteps
   world/
     terrain.js     island height function, terrain mesh, beaches, the sea (waves, foam, tide)
