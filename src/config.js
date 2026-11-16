@@ -121,6 +121,7 @@ export const CONFIG = {
     foam: 1, // 0 = no foam … 1 = full
     reflection: 0.7, // how strongly the surface mirrors the sky at a glancing angle
     caustics: 0.5, // dancing light on the bottom in the shallows (0 = off)
+    glitter: 1, // sparkles of sun on the ripples (0 = off)
     waves: {
       height: 0.16, // metres the swell rises and falls (0 = flat calm)
       length: 34, // metres between crests
@@ -288,6 +289,8 @@ export const CONFIG = {
     mistHeight: 38, // metres of height over which the mist thins out
     highAirFog: 0.3, // share of the fog still present far above the mist (0..1)
     sunGlow: 0.16, // how much the haze brightens when you look toward the sun
+    cloudShadows: 0.5, // how much passing clouds dim the sunlight on the ground (0 = off)
+    rimLight: 0.55, // sky-coloured light on the edges of things (0 = off)
   },
 
   // ── Trails ────────────────────────────────────────────────────────────────
@@ -387,6 +390,8 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     shadowDistance: 70, // radius around the player that receives shadows
     // Finishing touches applied to the whole picture (1 = unchanged for saturation/contrast, 0 = off for the rest).
     grade: { enabled: true, saturation: 1.08, contrast: 1.03, vignette: 0.22, warmth: 0.6 },
+    // Shafts of light from the sun, cut by whatever stands in front of it. Strongest when the sun is low.
+    godRays: { enabled: true, strength: 0.55, samples: 44 },
     bloom: { enabled: true, strength: 0.35, radius: 0.7, threshold: 0.9 },
   },
 

@@ -10,7 +10,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import GUI from 'lil-gui';
 
 import { CONFIG } from './config.js';
-import { atmosphere, GradeShader } from './atmosphere.js'; // (first: it upgrades the fog for every material made after)
+import { atmosphere, GradeShader, GodRaysPass } from './atmosphere.js'; // (first: it upgrades the fog for every material made after)
 import { loadAssets } from './assets.js';
 import { createTerrain, createWater, createHeightTexture, terrainUniforms, waterNearness, heightAt } from './world/terrain.js';
 import { placeTidePools } from './world/shore.js';
@@ -58,6 +58,8 @@ composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(innerWidth, innerHeight);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), bloomCfg.strength, bloomCfg.radius, bloomCfg.threshold);
 composer.addPass(new RenderPass(scene, camera));
+const godRays = new GodRaysPass();
+composer.addPass(godRays);
 composer.addPass(bloom);
 const grade = new ShaderPass(GradeShader);
 grade.enabled = CONFIG.render.grade.enabled;
@@ -160,6 +162,9 @@ if (CONFIG.debug.gui) {
   gui.add(bloomCfg, 'enabled').name('bloom');
   gui.add(bloomCfg, 'strength', 0, 2, 0.01).name('bloom strength');
   gui.add(grade, 'enabled').name('colour grade');
+  gui.add(CONFIG.render.godRays, 'enabled').name('light shafts');
+  gui.add(atmosphere.uAtmoCloudShadow, 'value', 0, 1, 0.01).name('cloud shadows');
+  gui.add(atmosphere.uAtmoRim, 'value', 0, 1.5, 0.01).name('rim light');
   gui.add(CONFIG.render, 'fov', 40, 100, 1).name('field of view');
   gui.add(CONFIG.render, 'drawDistanceScale', 0.3, 3, 0.05).name('draw distance');
   gui.add(CONFIG.render.adaptive, 'enabled').name('auto resolution');
@@ -176,6 +181,7 @@ window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
 const waterColor = new THREE.Color();
+const sunOnScreen = new THREE.Vector3();
 
 // ── Adaptive resolution ─────────────────────────────────────────────────────
 // Once a second, compare the frame rate with the target. Too slow: render at a
@@ -303,6 +309,21 @@ renderer.setAnimationLoop(() => {
   atmosphere.uFogSunDir.value.copy(sky.lightDir);
   atmosphere.uFogSunColor.value.copy(sky.state.lightColor).multiplyScalar(Math.min(sky.state.lightIntensity, 3) * CONFIG.atmosphere.sunGlow);
   atmosphere.uSkyColor.value.copy(sky.state.skyHorizon).lerp(sky.state.skyTop, 0.35);
+  atmosphere.uAtmoTime.value = elapsed;
+  atmosphere.uAtmoSky.value.copy(sky.state.skyHorizon).lerp(sky.state.skyTop, 0.5).multiplyScalar(sky.state.ambientIntensity);
+  atmosphere.uAtmoCloudCover.value = CONFIG.sky.clouds.cover;
+
+  // Light shafts: find where the sun is on screen; fade them out as it leaves view, climbs high or sets.
+  const G = CONFIG.render.godRays;
+  let shafts = 0;
+  if (G.enabled && sky.sunDir.y > -0.06) {
+    sunOnScreen.copy(camera.position).addScaledVector(sky.sunDir, 1000).project(camera);
+    const inFront = sunOnScreen.z < 1;
+    const offScreen = Math.max(Math.abs(sunOnScreen.x), Math.abs(sunOnScreen.y));
+    const low = 1 - THREE.MathUtils.smoothstep(sky.sunDir.y, 0.3, 0.85) * 0.75; // strongest when the sun is low
+    shafts = inFront ? G.strength * low * (1 - THREE.MathUtils.smoothstep(offScreen, 0.85, 1.35)) * THREE.MathUtils.smoothstep(sky.sunDir.y, -0.06, 0.03) : 0;
+  }
+  godRays.aim(sunOnScreen.x * 0.5 + 0.5, sunOnScreen.y * 0.5 + 0.5, shafts, camera.aspect);
   motes.update(elapsed, camera.position, sky.state.motes, moteColor);
 
   waterColor.copy(water.userData.baseColor).lerp(sky.state.skyHorizon, CONFIG.water.skyTint);

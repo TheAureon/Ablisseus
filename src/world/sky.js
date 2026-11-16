@@ -99,6 +99,9 @@ const skyFragment = /* glsl */ `
     // ── Sun and moon ──
     float s = max(dot(dir, uSunDir), 0.0);
     col += uSunColor * uSunStrength * (smoothstep(0.9993, 0.9996, s) * 6.0 + pow(s, 400.0) * 0.8 + pow(s, 12.0) * 0.25);
+    // When the sun is low, its whole side of the sky warms, most of all near the horizon.
+    float lowSun = 1.0 - smoothstep(0.0, 0.45, uSunDir.y);
+    col += uSunColor * uSunStrength * lowSun * pow(s, 2.5) * (1.0 - h) * (1.0 - h) * 0.22;
     float m = max(dot(dir, -uSunDir), 0.0);
     col += vec3(0.75, 0.82, 1.0) * uMoonStrength * (smoothstep(0.9996, 0.9998, m) * 2.5 + pow(m, 300.0) * 0.25);
 
@@ -249,5 +252,5 @@ export function createSky(scene) {
     scene.fog.density = state.fogDensity * fogMultiplier;
   }
 
-  return { update, state, lightDir };
+  return { update, state, lightDir, sunDir };
 }

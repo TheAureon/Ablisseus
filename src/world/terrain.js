@@ -435,6 +435,7 @@ export function createWater(heightTexture) {
     uShallowDepth: { value: w.shallowDepth },
     uFoam: { value: w.foam },
     uReflection: { value: w.reflection },
+    uGlitter: { value: w.glitter },
   };
 
   const material = new THREE.MeshStandardMaterial({ color: w.color, transparent: true, opacity: w.opacity, roughness: 0.16, metalness: 0.1 });
@@ -480,6 +481,7 @@ export function createWater(heightTexture) {
         varying vec3 vWater;
         uniform vec3 uSkyColor;
         uniform float uReflection;
+        uniform float uGlitter;
         float waterFoam = 0.0;
         ${NOISE_GLSL}
         float wNoise(vec2 p) { return aNoise(p); }
@@ -531,6 +533,11 @@ export function createWater(heightTexture) {
         `float glance = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 4.0) * uReflection * (1.0 - waterFoam);
         outgoingLight = mix(outgoingLight, uSkyColor, glance);
         diffuseColor.a = max(diffuseColor.a, glance);
+        // Glitter: here and there a ripple throws the sun straight back at you.
+        vec3 sunView = (viewMatrix * vec4(uFogSunDir, 0.0)).xyz;
+        float mirror = pow(max(dot(reflect(-normalize(vViewPosition), normal), sunView), 0.0), 18.0);
+        float spark = smoothstep(0.78, 0.95, aNoise(vWater.xz * 7.0 + vec2(uTime * 1.7, -uTime * 1.1)) * 0.6 + aNoise(vWater.xz * 19.0 - uTime * 2.3) * 0.4);
+        outgoingLight += uFogSunColor * mirror * spark * 40.0 * uGlitter * (1.0 - waterFoam) * atmoCloudLight();
         #include <opaque_fragment>`,
       );
   };
