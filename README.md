@@ -39,6 +39,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Look | mouse (click to capture, `Esc` to release) |
 | Hurry | `Shift` |
 | Jump | `Space` |
+| Swim | walk into deep water; `Shift` to swim faster |
 | Map | `M` |
 | Tweak panel | `G` (press `Esc` first to free the mouse) |
 | Touch | drag left half of screen to walk, right half to look, tap right half to jump |

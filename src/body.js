@@ -36,8 +36,13 @@ export function createBody(template) {
   function update(dt, state) {
     body.visible = c.enabled;
     body.position.set(state.position.x, state.position.y + state.bob, state.position.z);
+    body.rotation.order = 'YXZ';
     body.rotation.y = state.yaw;
-    body.translateZ(c.backOffset); // sit slightly behind the eyes
+    // Swimming: the body tips forward to lie in the water, trailing behind the head.
+    const swim = state.swim ?? 0;
+    body.rotation.x = -swim * 1.05;
+    body.translateZ(c.backOffset + swim * 0.75); // sit slightly behind the eyes
+    body.position.y += swim * 0.35;
 
     const amount = state.moveAmount * (1 + state.hurry * 0.4);
     const swing = Math.cos(state.stride) * amount;
@@ -54,6 +59,16 @@ export function createBody(template) {
     // Arms swing opposite to the leg on the same side.
     if (armL) armL.rotation.x = -swing * c.armSwing + tuck * 0.5;
     if (armR) armR.rotation.x = swing * c.armSwing + tuck * 0.5;
+
+    if (swim > 0.01) {
+      // A flutter kick and an alternating arm pull.
+      const kick = Math.sin((state.stroke ?? 0) * 3) * 0.35 * swim;
+      const pull = Math.sin(state.stroke ?? 0) * swim;
+      if (legL) legL.rotation.x += kick;
+      if (legR) legR.rotation.x -= kick;
+      if (armL) armL.rotation.x += swim * 2.2 + pull * 0.9;
+      if (armR) armR.rotation.x += swim * 2.2 - pull * 0.9;
+    }
 
     if (mixer) mixer.update(dt * (state.speed / CONFIG.player.walkSpeed));
   }

@@ -46,11 +46,11 @@ export const CONFIG = {
     sprintFov: 4, // extra field of view while hurrying (degrees)
     groundFollow: 10, // how tightly the eyes follow bumps (lower = floatier)
 
-    // Water: you can wade in until it reaches your neck. There is no wall —
-    // the deeper you are, the slower you can push further in, down to nothing.
-    neckDepth: 1.45, // metres of water at which you can go no deeper
-    waterDragCurve: 1.6, // 1 = slows evenly with depth; higher = stays quick in the shallows, then slows sharply
-    waterExitSpeed: 0.4, // fraction of normal speed you always keep for heading back toward the shallows
+    // Water: wading slows you with depth; where it is deep enough you float and swim.
+    swimFloatDepth: 1.4, // metres of water you float in — the waterline sits at about your shoulders
+    swimSpeed: 1.7, // metres / second
+    swimSprintSpeed: 2.8, // with Shift
+    strokeRate: 0.75, // strokes per second
     jumpMaxDepth: 0.7, // no jumping in water deeper than this
     spawn: [0, 0], // x, z — snaps to the nearest dry land
     startYaw: 0.6, // initial facing, radians

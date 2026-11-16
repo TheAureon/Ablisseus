@@ -313,6 +313,22 @@ export function approxSlopeAt(x, z) {
 }
 
 /**
+ * How far the swell lifts the water at a point, in metres — the same waves the
+ * water shader draws, so things can float on them.
+ */
+export function swellAt(x, z, time) {
+  const w = CONFIG.water.waves;
+  const k = (Math.PI * 2) / w.length;
+  const t = time * w.speed;
+  return (
+    (Math.sin((x * 0.8 + z * 0.6) * k + t) * 0.5 +
+      Math.sin((x * -0.45 + z * 0.89) * k * 1.7 + t * 1.31) * 0.3 +
+      Math.sin((x * 0.95 + z * -0.31) * k * 2.9 + t * 1.83) * 0.2) *
+    w.height
+  );
+}
+
+/**
  * The sea (and the lakes — it is one sheet of water).
  *   - a slow swell moves the surface, so water really runs up and down beaches
  *   - smaller ripples catch the light
