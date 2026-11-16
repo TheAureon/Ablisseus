@@ -35,14 +35,19 @@ export function createBody(template) {
   /** @param state the player's motion state (see player.js) */
   function update(dt, state) {
     body.visible = c.enabled;
-    body.position.set(state.position.x, state.position.y + state.bob, state.position.z);
-    body.rotation.order = 'YXZ';
-    body.rotation.y = state.yaw;
-    // Swimming: the body tips forward to lie in the water, trailing behind the head.
+    // Swimming: the body tips forward to lie in the water. It pivots at the
+    // shoulders, so the head stays where your eyes are and the legs trail out
+    // behind (pivoting at the feet would swing the torso up in front of your face).
     const swim = state.swim ?? 0;
-    body.rotation.x = -swim * 1.05;
-    body.translateZ(c.backOffset + swim * 0.75); // sit slightly behind the eyes
-    body.position.y += swim * 0.35;
+    const pitch = swim * c.swimPitch;
+    const back = c.backOffset + c.shoulderHeight * Math.sin(pitch) + swim * 0.12;
+    body.rotation.order = 'YXZ';
+    body.rotation.set(-pitch, state.yaw, 0);
+    body.position.set(
+      state.position.x + Math.sin(state.yaw) * back,
+      state.position.y + state.bob + c.shoulderHeight * (1 - Math.cos(pitch)) - swim * 0.12,
+      state.position.z + Math.cos(state.yaw) * back,
+    );
 
     const amount = state.moveAmount * (1 + state.hurry * 0.4);
     const swing = Math.cos(state.stride) * amount;

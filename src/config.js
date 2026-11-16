@@ -76,6 +76,8 @@ export const CONFIG = {
     kneeBend: 0.9,
     armSwing: 0.32,
     airTuck: 0.45, // how much the legs tuck up mid-jump
+    shoulderHeight: 1.3, // metres from feet to shoulders (the body pivots here when swimming)
+    swimPitch: 1.15, // how far the body tips forward when swimming (radians; 1.57 = flat)
   },
 
   // ── Terrain ───────────────────────────────────────────────────────────────
