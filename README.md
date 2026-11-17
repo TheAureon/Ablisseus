@@ -56,6 +56,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Change sound volumes, or how lively each biome sounds | `audio` and each biome's `wind/leaves/birds/crickets` in `src/config.js` |
 | Trade looks for frame rate | `render.quality` (`low` / `medium` / `high` / `ultra`) in `src/config.js`, or *quality* in the `G` panel |
 | Fine-tune resolution, draw distance, shadows, bloom, tone mapping | `render` in `src/config.js` (set `quality: 'custom'` so a preset doesn't override them) |
+| Change the title screen's view, or the glide down | `title` in `src/config.js` |
 | Change fog, mist, cloud and hill shadows, sky light | `atmosphere` in `src/config.js` |
 | Swap a placeholder for a real model | `src/assets.js` |
 | Change a placeholder shape | `src/placeholders.js` |

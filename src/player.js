@@ -44,8 +44,22 @@ export function createPlayer(camera, canvas) {
   });
   addEventListener('keyup', (e) => down.delete(e.code));
   addEventListener('blur', () => down.clear());
+  // When the mouse is first captured, browsers can report one bogus jump (the
+  // cursor's distance from the screen centre), sometimes even before announcing
+  // the capture. So the first movement after each capture is ignored, as is any
+  // single jump too large to be a real hand movement.
+  let freshLock = true;
   document.addEventListener('mousemove', (e) => {
-    if (document.pointerLockElement === canvas) look(e.movementX, e.movementY);
+    if (document.pointerLockElement !== canvas) {
+      freshLock = true;
+      return;
+    }
+    if (freshLock) {
+      freshLock = false;
+      return;
+    }
+    if (Math.abs(e.movementX) > 400 || Math.abs(e.movementY) > 400) return;
+    look(e.movementX, e.movementY);
   });
 
   // ── Touch ──

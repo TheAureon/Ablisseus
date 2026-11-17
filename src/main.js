@@ -75,7 +75,7 @@ addEventListener('resize', () => {
 });
 
 // ── World ───────────────────────────────────────────────────────────────────
-const live = { time: CONFIG.time.start, fog: 1, tidePhase: -0.9 }; // values the tweak panel changes at runtime
+const live = { time: CONFIG.title.time ?? CONFIG.time.start, fog: 1, tidePhase: -0.9 }; // values the tweak panel changes at runtime
 const adaptive = { scale: 1, frames: 0, seconds: 0, goodSeconds: 0, patience: 4, warmup: 3, steppedUp: false }; // resolution auto-scaling state
 
 const templates = await loadAssets();
@@ -131,11 +131,55 @@ if (CONFIG.ui.map.enabled) {
   document.getElementById('map-button').remove();
 }
 
+// ── Title view ──────────────────────────────────────────────────────────────
+// Until you click, the camera hangs high over the island and drifts slowly.
+// Then it glides down to your eyes, the fog and clouds easing back to normal.
+const title = { active: true, leaving: false, progress: 0, cloudsWere: CONFIG.sky.clouds.cover };
+const titleSpot = (() => {
+  const T = CONFIG.title;
+  const anchor = landmarks.find((lm) => lm.asset === T.around) ?? { x: CONFIG.player.spawn[0], z: CONFIG.player.spawn[1] };
+  return {
+    camera: new THREE.Vector3(anchor.x + T.camera[0], T.camera[1], anchor.z + T.camera[2]),
+    target: new THREE.Vector3(anchor.x + T.lookAt[0], T.lookAt[1], anchor.z + T.lookAt[2]),
+  };
+})();
+const titleCamera = new THREE.PerspectiveCamera(); // (a camera, so lookAt aims its view rather than its back)
+const firstPerson = new THREE.Object3D();
+
+function updateTitle(dt, elapsed) {
+  if (!title.active) return;
+  const T = CONFIG.title;
+  // The drifting overhead view: a slow swing around the point it looks at.
+  const swing = Math.sin(elapsed * 0.05) * T.drift;
+  const offset = titleSpot.camera.clone().sub(titleSpot.target).applyAxisAngle(THREE.Object3D.DEFAULT_UP, swing);
+  titleCamera.position.copy(titleSpot.target).add(offset);
+  titleCamera.lookAt(titleSpot.target);
+
+  if (title.leaving) title.progress = Math.min(1, title.progress + dt / T.descentSeconds);
+  const k = title.progress * title.progress * (3 - 2 * title.progress); // ease in and out
+  // Blend from the title view to where the player's own camera is this frame.
+  firstPerson.position.copy(camera.position);
+  firstPerson.quaternion.copy(camera.quaternion);
+  camera.position.lerpVectors(titleCamera.position, firstPerson.position, k);
+  camera.quaternion.slerpQuaternions(titleCamera.quaternion, firstPerson.quaternion, k);
+  if (k < 1) camera.position.y = Math.max(camera.position.y, heightAt(camera.position.x, camera.position.z) + 2.5); // never fly through a hill
+  CONFIG.sky.clouds.cover = THREE.MathUtils.lerp(T.clouds, title.cloudsWere, k);
+  titleFog = THREE.MathUtils.lerp(T.fog, 1, k);
+  if (title.progress >= 1) {
+    title.active = false;
+    titleFog = 1;
+  }
+}
+let titleFog = CONFIG.title.fog;
+
 // ── Start / pause ───────────────────────────────────────────────────────────
 overlayStatus.textContent = isTouch ? 'tap to wander' : 'click to wander';
+overlay.classList.remove('loading'); // the world is ready: let the view show through
 
 function begin() {
+  if (overlay.classList.contains('hidden')) return;
   overlay.classList.add('hidden');
+  title.leaving = true;
   if (CONFIG.ui.crosshair) crosshair.style.opacity = CONFIG.ui.crosshairOpacity;
   startAudio();
   if (isTouch) player.setEnabled(true);
@@ -191,7 +235,7 @@ if (CONFIG.debug.gui) {
 }
 
 // Handy for poking at things from the browser console.
-window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt, atmosphere, hillShadows };
+window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt, atmosphere, hillShadows, title };
 
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
@@ -277,9 +321,10 @@ renderer.setAnimationLoop(() => {
   adaptResolution(rawDt);
   const elapsed = timer.getElapsed();
 
-  if (!CONFIG.time.paused) live.time = (live.time + dt / CONFIG.time.dayLengthSeconds) % 1;
+  if (!CONFIG.time.paused && !(title.active && !title.leaving)) live.time = (live.time + dt / CONFIG.time.dayLengthSeconds) % 1;
 
   player.update(dt);
+  updateTitle(dt, elapsed);
   body.update(dt, player.state);
   map.update(player.position, player.state.yaw);
   updateScatter(camera.position);
@@ -316,7 +361,7 @@ renderer.setAnimationLoop(() => {
     awe: Math.max(THREE.MathUtils.smoothstep(altitude, 22, 70), currentLandmark ? 0.8 : 0),
   });
 
-  sky.update(live.time, camera.position, live.fog * biomeFog, { time: elapsed, aurora, dt });
+  sky.update(live.time, camera.position, live.fog * biomeFog * titleFog, { time: elapsed, aurora, dt });
   horizon.update(sky.state, sky.lightDir);
 
   // Tell every shader what the light is doing.

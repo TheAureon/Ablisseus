@@ -449,6 +449,20 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     },
   },
 
+  // The title screen: a slow drifting view over the island, from which the
+  // camera glides down to you when you click. Positions are relative to the
+  // landmark named in `around`.
+  title: {
+    around: 'iceCrown',
+    camera: [170, 260, -120], // x, height above the sea, z
+    lookAt: [40, 20, -30],
+    time: 0.705, // time of day shown (the day starts from here)
+    fog: 0.4, // fog amount while on the title (1 = normal)
+    clouds: 0, // cloud cover while on the title
+    drift: 0.05, // how far (radians) the view slowly swings back and forth
+    descentSeconds: 4, // the glide down into first person
+  },
+
   debug: {
     gui: true, // press G in-game for a live tweak panel
   },
