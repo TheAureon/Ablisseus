@@ -132,7 +132,11 @@ export function slopeAt(x, z) {
 export const terrainUniforms = { uSeaLevel: { value: CONFIG.water.level } };
 
 /** @param pathTexture optional trail mask from trails.js; its red channel tints the ground into footpath */
-export function createTerrain(pathTexture = null) {
+/**
+ * @param pathTexture optional trail mask (red channel = footpath)
+ * @param canopies    optional [{ x, z, r }] trees, whose shade darkens the ground beneath them
+ */
+export function createTerrain(pathTexture = null, canopies = []) {
   const c = CONFIG.terrain;
   const { grid, resolution } = ensureHeightGrid();
   const cells = resolution - 1;
@@ -200,8 +204,8 @@ export function createTerrain(pathTexture = null) {
     shader.uniforms.uWetReach = { value: c.beach.wetReach };
     shader.uniforms.uBeachTop = { value: CONFIG.water.level + c.sandHeight * 1.5 };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvPathUv = position.xz / uTerrainSize + 0.5;');
+      .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nattribute float aOcclusion;\nvarying float vOcclusion;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvOcclusion = aOcclusion;\nvPathUv = position.xz / uTerrainSize + 0.5;');
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -214,6 +218,7 @@ export function createTerrain(pathTexture = null) {
         uniform float uBeachTop;
         varying vec2 vPathUv;
         varying vec3 vGround;
+        varying float vOcclusion;
         uniform float uTime;
         uniform float uCaustics;
         uniform float uGroundDetail;
@@ -269,8 +274,59 @@ export function createTerrain(pathTexture = null) {
         }`,
       )
       // Wet ground is glossy.
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.28, groundWet);');
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.28, groundWet);')
+      // Occlusion takes away soft sky light fully, and a little of the direct light too.
+      .replace(
+        '#include <lights_fragment_end>',
+        `#include <lights_fragment_end>
+        reflectedLight.indirectDiffuse *= vOcclusion;
+        reflectedLight.directDiffuse *= mix(1.0, vOcclusion, 0.3);`,
+      );
   };
+  // Ambient occlusion: how open to the sky each point of ground is. Hollows,
+  // valleys and the feet of slopes see less sky and so less soft light; so
+  // does the ground under trees. Worked out once, from the height grid.
+  const occlusion = new Float32Array(resolution * resolution).fill(1);
+  const AO = c.occlusion;
+  if (AO.strength > 0) {
+    const reach = [1, 2, 4, 7, 12]; // in grid cells (about 3.6 m each)
+    const dirs = [];
+    for (let d = 0; d < 8; d++) dirs.push([Math.cos((d / 8) * Math.PI * 2), Math.sin((d / 8) * Math.PI * 2)]);
+    for (let j = 0; j < resolution; j++) {
+      for (let i = 0; i < resolution; i++) {
+        const k = j * resolution + i;
+        const y = grid[k];
+        if (y < water - 5) continue; // deep sea
+        let blocked = 0;
+        for (const [dx, dz] of dirs) {
+          let steepest = 0; // sine of the highest angle to the horizon this way
+          for (const r of reach) {
+            const si = Math.round(i + dx * r);
+            const sj = Math.round(j + dz * r);
+            if (si < 0 || sj < 0 || si > cells || sj > cells) break;
+            const rise = grid[sj * resolution + si] - y;
+            if (rise > 0) steepest = Math.max(steepest, rise / Math.hypot(rise, r * cell));
+          }
+          blocked += steepest;
+        }
+        occlusion[k] = 1 - Math.min(1, (blocked / 8) * AO.strength * 1.6);
+      }
+    }
+    // Shade under trees: soft discs, darkest at the trunk.
+    for (const tree of canopies) {
+      const r = tree.r * 1.35;
+      const ci = (tree.x / c.size + 0.5) * cells;
+      const cj = (tree.z / c.size + 0.5) * cells;
+      const reachCells = Math.ceil(r / cell);
+      for (let j = Math.max(0, Math.floor(cj - reachCells)); j <= Math.min(cells, Math.ceil(cj + reachCells)); j++) {
+        for (let i = Math.max(0, Math.floor(ci - reachCells)); i <= Math.min(cells, Math.ceil(ci + reachCells)); i++) {
+          const d = Math.hypot(i - ci, j - cj) * cell;
+          if (d < r) occlusion[j * resolution + i] *= 1 - AO.underTrees * (1 - smoothstep(0, r, d));
+        }
+      }
+    }
+  }
+
   // Cut the grid into tiles. Each is its own mesh, so the renderer can skip
   // the ones behind you — and tiles that are nothing but deep sea are never
   // made at all (the endless seabed under the water stands in for them).
@@ -284,6 +340,7 @@ export function createTerrain(pathTexture = null) {
       const positions = new Float32Array((w + 1) * (h + 1) * 3);
       const tileNormals = new Float32Array(positions.length);
       const tileColors = new Float32Array(positions.length);
+      const tileOcclusion = new Float32Array(positions.length / 3);
       let highest = -Infinity;
       for (let j = 0; j <= h; j++) {
         for (let i = 0; i <= w; i++) {
@@ -297,6 +354,7 @@ export function createTerrain(pathTexture = null) {
             tileNormals[o + n] = normals[k * 3 + n];
             tileColors[o + n] = colors[k * 3 + n];
           }
+          tileOcclusion[o / 3] = occlusion[k];
         }
       }
       if (highest < water - 5) continue; // open sea
@@ -313,6 +371,7 @@ export function createTerrain(pathTexture = null) {
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geo.setAttribute('normal', new THREE.BufferAttribute(tileNormals, 3));
       geo.setAttribute('color', new THREE.BufferAttribute(tileColors, 3));
+      geo.setAttribute('aOcclusion', new THREE.BufferAttribute(tileOcclusion, 1));
       geo.setIndex(index);
       const mesh = new THREE.Mesh(geo, material);
       mesh.receiveShadow = true;

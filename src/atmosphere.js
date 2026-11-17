@@ -4,6 +4,13 @@
 //     climb, and glows warm when you look toward the sun.
 //   • Cloud shadows: the light of the sun dims and brightens as clouds drift
 //     over, in slow patches that cross the land.
+//   • Fog the colour of the sky behind it, so distant land melts into the
+//     sky exactly, with slow drifting patches of thicker mist.
+//   • Hill shadows: when the sun is low, hills throw long shadows across the
+//     land, far beyond the reach of ordinary shadows. A few times a second the
+//     GPU works out, for every spot in the world, how high you'd have to stand
+//     there to see the sun over the hills (HillShadowBaker, below); every
+//     surface then needs just one look-up.
 //   • A soft rim of sky light on the edges of everything, which rounds out
 //     simple shapes and separates them from what is behind.
 //   • A handful of "what is the light doing right now" values that any shader
@@ -30,7 +37,17 @@ export const atmosphere = {
   uAtmoRim: { value: CONFIG.atmosphere.rimLight },
   uAtmoCloudCover: { value: CONFIG.sky.clouds.cover },
   uAtmoCloudShadow: { value: CONFIG.atmosphere.cloudShadows },
+  uAtmoSkyTop: { value: new THREE.Color() }, // the sky overhead and at the horizon, for the fog
+  uAtmoSkyHorizon: { value: new THREE.Color() },
+  uAtmoMist: { value: CONFIG.atmosphere.mistPatches },
+  // Hill shadows (filled in by HillShadowBaker): for each spot, the height the sun clears the hills at (r)
+  // and how far off the hill that blocks it is (g, for soft shadow edges).
+  uAtmoHillMap: { value: new THREE.DataTexture(new Float32Array([-1e4, 0, 0, 0]), 1, 1, THREE.RGBAFormat, THREE.FloatType) },
+  uAtmoTerrainSize: { value: CONFIG.terrain.size },
 };
+atmosphere.uAtmoHillMap.value.needsUpdate = true;
+
+const HILL_ON = CONFIG.atmosphere.hillShadows.steps > 0;
 // The same sun, under names shaders can declare for themselves (the fog code already declares the two above).
 atmosphere.uSunDir = atmosphere.uFogSunDir;
 atmosphere.uSunColor = atmosphere.uFogSunColor;
@@ -83,9 +100,32 @@ THREE.ShaderChunk.fog_pars_fragment = /* glsl */ `
     return mix(mix(atmoHash(i), atmoHash(i + vec2(1.0, 0.0)), f.x), mix(atmoHash(i + vec2(0.0, 1.0)), atmoHash(i + vec2(1.0, 1.0)), f.x), f.y);
   }
   // How much direct light reaches this point through the drifting clouds (1 = full sun).
+  uniform vec3 uAtmoSkyTop;
+  uniform vec3 uAtmoSkyHorizon;
+  uniform float uAtmoMist;
+  vec3 atmoWorldPosition() { return cameraPosition + transpose(mat3(viewMatrix)) * vFogView; }
+
+  // How much direct light reaches this point past the hills between it and the sun (1 = all of it).
+  #define ATMO_HILLS ${HILL_ON ? 1 : 0}
+  #if ATMO_HILLS
+    uniform sampler2D uAtmoHillMap;
+    uniform float uAtmoTerrainSize;
+    float atmoHillShadow(vec3 L) {
+      if (L.y <= 0.0) return 1.0;
+      vec3 w = atmoWorldPosition();
+      vec2 uv = w.xz / uAtmoTerrainSize + 0.5;
+      if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 1.0;
+      vec2 hill = texture2D(uAtmoHillMap, uv).rg;
+      // Soft edges: the further away the blocking hill, the wider the penumbra.
+      return clamp((w.y + 0.9 - hill.r) / (0.6 + hill.g * ${CONFIG.atmosphere.hillShadows.softness.toFixed(3)}) + 0.5, 0.0, 1.0);
+    }
+  #else
+    float atmoHillShadow(vec3 L) { return 1.0; }
+  #endif
+
   float atmoCloudLight() {
     if (uAtmoCloudShadow <= 0.0) return 1.0;
-    vec3 world = cameraPosition + transpose(mat3(viewMatrix)) * vFogView;
+    vec3 world = atmoWorldPosition();
     // The same slow drift as the clouds in the sky, laid over the ground.
     vec2 uv = world.xz * 0.0022 + vec2(uAtmoTime * 0.004, uAtmoTime * 0.0016);
     float density = atmoNoise(uv) * 0.5 + atmoNoise(uv * 2.03 + 17.0) * 0.3 + atmoNoise(uv * 4.1 + 31.0) * 0.2;
@@ -102,17 +142,26 @@ THREE.ShaderChunk.fog_fragment = /* glsl */ `
     float fogMeanHeight = cameraPosition.y + dot(vFogView, fogUp) * 0.5;
     float fogAir = mix(uFogFloor, 1.0, exp(-max(fogMeanHeight, 0.0) * uFogFalloff));
     float fogAmount = fogDensity * fogAir * vFogDepth;
+    // Mist drifts in patches: thicker here, thinner there, slowly moving.
+    if (uAtmoMist > 0.0) {
+      vec3 fogDir = normalize(transpose(mat3(viewMatrix)) * vFogView);
+      vec2 fogMid = (cameraPosition + fogDir * min(vFogDepth * 0.5, 240.0)).xz;
+      float mistPatch = atmoNoise(fogMid * 0.009 + uAtmoTime * vec2(0.005, 0.003)) * 0.65 + atmoNoise(fogMid * 0.023 - uAtmoTime * 0.004) * 0.35;
+      fogAmount *= mix(1.0, 0.35 + 1.4 * mistPatch, uAtmoMist);
+    }
     float fogFactor = 1.0 - exp(-fogAmount * fogAmount);
   #else
     float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
   #endif
-  // Haze lights up toward the sun.
-  vec3 fogSunView = (viewMatrix * vec4(uFogSunDir, 0.0)).xyz;
-  float fogTowardSun = pow(max(dot(normalize(vFogView), fogSunView), 0.0), 5.0);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor + uFogSunColor * fogTowardSun, fogFactor);
+  // The fog takes the colour of the sky behind it, and lights up toward the sun.
+  vec3 fogLook = normalize(transpose(mat3(viewMatrix)) * vFogView);
+  vec3 fogSky = mix(uAtmoSkyHorizon, uAtmoSkyTop, pow(max(fogLook.y, 0.0), 0.55));
+  float fogTowardSun = pow(max(dot(fogLook, uFogSunDir), 0.0), 5.0);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogSky + uFogSunColor * fogTowardSun, fogFactor);
 #endif`;
 
-// Cloud shadows: dim each directional light (the sun, or the moon) by the clouds above the point being lit.
+// Cloud and hill shadows: dim each directional light (the sun, or the moon) by the clouds
+// above the point being lit and by any hill standing between it and the light.
 {
   const call = 'getDirectionalLightInfo( directionalLight, directLight );';
   if (!THREE.ShaderChunk.lights_fragment_begin.includes(call)) console.warn('[atmosphere] cloud shadows: three.js lighting code has changed; skipping');
@@ -120,7 +169,7 @@ THREE.ShaderChunk.fog_fragment = /* glsl */ `
     call,
     `${call}
     #ifdef USE_FOG
-      directLight.color *= atmoCloudLight();
+      directLight.color *= atmoCloudLight() * atmoHillShadow(uFogSunDir);
     #endif`,
   );
 }
@@ -261,5 +310,75 @@ export class GodRaysPass extends Pass {
     this.quad.material = this.blend;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
+  }
+}
+
+/**
+ * Works out hill shadows for the whole world in one GPU pass over its height
+ * map: for each spot, steps toward the sun and records the lowest height from
+ * which the sun would clear every hill on the way (and how far off the highest
+ * of them is). Re-run whenever the sun has moved a little.
+ */
+export class HillShadowBaker {
+  constructor(renderer, heightTexture) {
+    const H = CONFIG.atmosphere.hillShadows;
+    this.renderer = renderer;
+    this.enabled = H.steps > 0;
+    this.last = new THREE.Vector3(0, -1, 0);
+    if (!this.enabled) return;
+    const size = heightTexture.image.width;
+    this.target = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
+    const start = 2;
+    const growth = Math.pow(H.reach / start, 1 / Math.max(1, H.steps - 1));
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        uHeightMap: { value: heightTexture },
+        uTexels: { value: size },
+        uSize: { value: CONFIG.terrain.size },
+        uSeabed: { value: -CONFIG.terrain.seabedDepth },
+        uLight: { value: new THREE.Vector3(0, 1, 0) },
+      },
+      vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uHeightMap;
+        uniform float uTexels;
+        uniform float uSize;
+        uniform float uSeabed;
+        uniform vec3 uLight;
+        varying vec2 vUv;
+        float ground(vec2 xz) {
+          vec2 uv = xz / uSize + 0.5;
+          if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return uSeabed;
+          return texture2D(uHeightMap, (uv * (uTexels - 1.0) + 0.5) / uTexels).r;
+        }
+        void main() {
+          vec2 xz = (vUv - 0.5) * uSize;
+          float clearHeight = -1e4;
+          float blockerAt = 0.0;
+          float t = ${start.toFixed(1)};
+          for (int i = 0; i < ${H.steps}; i++) {
+            // Standing at height y here, the sun clears the ground t metres along its ray if y > ground - t * rise.
+            float needed = ground(xz + uLight.xz * t) - t * uLight.y;
+            if (needed > clearHeight) { clearHeight = needed; blockerAt = t; }
+            t *= ${growth.toFixed(5)};
+          }
+          gl_FragColor = vec4(clearHeight, blockerAt, 0.0, 1.0);
+        }`,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.quad = new FullScreenQuad(this.material);
+    atmosphere.uAtmoHillMap.value = this.target.texture;
+  }
+
+  /** Re-bakes if the light (sun or moon) has moved enough to matter. */
+  update(lightDir) {
+    if (!this.enabled || lightDir.y <= 0 || this.last.distanceToSquared(lightDir) < 0.003 ** 2) return;
+    this.last.copy(lightDir);
+    this.material.uniforms.uLight.value.copy(lightDir);
+    const previous = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(this.target);
+    this.quad.render(this.renderer);
+    this.renderer.setRenderTarget(previous);
   }
 }

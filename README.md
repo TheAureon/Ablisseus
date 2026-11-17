@@ -54,7 +54,9 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Change waves, tide, beaches, tide pools | `water`, `tidePools` and `terrain.beach` in `src/config.js` |
 | Change landmarks, footpaths, lanterns, camps | `landmarks`, `trails`, `campfire` in `src/config.js` |
 | Change sound volumes, or how lively each biome sounds | `audio` and each biome's `wind/leaves/birds/crickets` in `src/config.js` |
-| Trade looks for frame rate: resolution, draw distance, shadows, bloom | `render` in `src/config.js` |
+| Trade looks for frame rate | `render.quality` (`low` / `medium` / `high` / `ultra`) in `src/config.js`, or *quality* in the `G` panel |
+| Fine-tune resolution, draw distance, shadows, bloom, tone mapping | `render` in `src/config.js` (set `quality: 'custom'` so a preset doesn't override them) |
+| Change fog, mist, cloud and hill shadows, sky light | `atmosphere` in `src/config.js` |
 | Swap a placeholder for a real model | `src/assets.js` |
 | Change a placeholder shape | `src/placeholders.js` |
 | Add ambient music | `CONFIG.audio.music` in `src/config.js` |
@@ -90,7 +92,7 @@ src/
   player.js        first-person movement and input
   body.js          your own body, seen when looking down
   map.js           the map (M), drawn from the world's own data
-  atmosphere.js    shared shading: height fog, sun-lit haze, live light values, colour grade
+  atmosphere.js    shared shading: fog and mist, cloud and hill shadows, rim light, light shafts, colour grade
   audio.js         synthesised soundscape: wind, leaves, water, fire, birds, crickets, footsteps
   world/
     terrain.js     island height function, terrain mesh, beaches, the sea (waves, foam, tide)

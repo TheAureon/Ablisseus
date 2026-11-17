@@ -9,13 +9,13 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import GUI from 'lil-gui';
 
-import { CONFIG } from './config.js';
-import { atmosphere, GradeShader, GodRaysPass } from './atmosphere.js'; // (first: it upgrades the fog for every material made after)
+import { CONFIG, QUALITY_PRESETS } from './config.js';
+import { atmosphere, GradeShader, GodRaysPass, HillShadowBaker } from './atmosphere.js'; // (first: it upgrades the fog for every material made after)
 import { loadAssets } from './assets.js';
 import { createTerrain, createWater, createHeightTexture, terrainUniforms, waterNearness, heightAt } from './world/terrain.js';
 import { placeTidePools } from './world/shore.js';
 import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOME_NAMES } from './world/biomes.js';
-import { createScatter, createPlacedProps, updateScatter } from './world/scatter.js';
+import { createScatter, createPlacedProps, updateScatter, canopies } from './world/scatter.js';
 import { placeLandmarks, createLandmarks } from './world/landmarks.js';
 import { createTrails } from './world/trails.js';
 import { createCampfires } from './world/campfire.js';
@@ -41,7 +41,8 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 const basePixelRatio = Math.min(devicePixelRatio, CONFIG.render.maxPixelRatio);
 renderer.setPixelRatio(basePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// How bright light and colour roll off into white: 'neutral' keeps hues truest; 'aces' is punchier and warmer; 'agx' is softest.
+renderer.toneMapping = { neutral: THREE.NeutralToneMapping, aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping }[CONFIG.render.toneMapping] ?? THREE.NeutralToneMapping;
 renderer.shadowMap.enabled = CONFIG.render.shadows;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
@@ -84,8 +85,11 @@ const templates = await loadAssets();
 const tidePools = placeTidePools(); // (these reshape the shore, so they go first)
 const landmarks = placeLandmarks();
 const trails = createTrails(landmarks);
-const water = createWater(createHeightTexture());
-scene.add(createTerrain(trails.texture), water, createScatter(templates, trails), createLandmarks(templates, landmarks));
+const heightTexture = createHeightTexture();
+const hillShadows = new HillShadowBaker(renderer, heightTexture);
+const water = createWater(heightTexture);
+const scatter = createScatter(templates, trails); // (before the terrain, which shades the ground under the trees)
+scene.add(createTerrain(trails.texture, canopies), water, scatter, createLandmarks(templates, landmarks));
 if (tidePools.length) scene.add(createPlacedProps(templates.rockPool, 'rockPool', tidePools, { castShadow: false, drawDistance: 220 }));
 for (const [asset, placements] of Object.entries(trails.props)) {
   if (placements.length) scene.add(createPlacedProps(templates[asset], asset, placements, { drawDistance: 380 }));
@@ -94,7 +98,7 @@ const campfires = createCampfires(templates.campfire, trails.campfires);
 scene.add(campfires.object);
 
 
-const sky = createSky(scene);
+const sky = createSky(scene, renderer);
 const horizon = createHorizon();
 scene.add(horizon.object);
 const motes = createMotes();
@@ -150,6 +154,16 @@ document.addEventListener('pointerlockchange', () => {
 // ── Tweak panel (press G; Esc frees the mouse so you can use it) ─────────────
 if (CONFIG.debug.gui) {
   const gui = new GUI({ title: 'Terra Ablisseus — tweaks' });
+  // Quality: remembered by the browser, and needs a reload to take effect.
+  const quality = { preset: CONFIG.render.quality };
+  gui.add(quality, 'preset', [...Object.keys(QUALITY_PRESETS), 'custom']).name('quality (reloads)').onChange((value) => {
+    try {
+      localStorage.setItem('terra.quality', value);
+    } catch {
+      // (storage unavailable)
+    }
+    location.reload();
+  });
   gui.add(live, 'time', 0, 1, 0.001).name('time of day').listen();
   gui.add(CONFIG.time, 'paused').name('freeze time');
   gui.add(CONFIG.time, 'dayLengthSeconds', 30, 3600, 10).name('day length (s)');
@@ -165,6 +179,7 @@ if (CONFIG.debug.gui) {
   gui.add(CONFIG.render.godRays, 'enabled').name('light shafts');
   gui.add(atmosphere.uAtmoCloudShadow, 'value', 0, 1, 0.01).name('cloud shadows');
   gui.add(atmosphere.uAtmoRim, 'value', 0, 1.5, 0.01).name('rim light');
+  gui.add(atmosphere.uAtmoMist, 'value', 0, 1, 0.01).name('mist patches');
   gui.add(CONFIG.render, 'fov', 40, 100, 1).name('field of view');
   gui.add(CONFIG.render, 'drawDistanceScale', 0.3, 3, 0.05).name('draw distance');
   gui.add(CONFIG.render.adaptive, 'enabled').name('auto resolution');
@@ -176,7 +191,7 @@ if (CONFIG.debug.gui) {
 }
 
 // Handy for poking at things from the browser console.
-window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt };
+window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt, atmosphere, hillShadows };
 
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
@@ -301,7 +316,7 @@ renderer.setAnimationLoop(() => {
     awe: Math.max(THREE.MathUtils.smoothstep(altitude, 22, 70), currentLandmark ? 0.8 : 0),
   });
 
-  sky.update(live.time, camera.position, live.fog * biomeFog, { time: elapsed, aurora });
+  sky.update(live.time, camera.position, live.fog * biomeFog, { time: elapsed, aurora, dt });
   horizon.update(sky.state, sky.lightDir);
 
   // Tell every shader what the light is doing.
@@ -312,6 +327,9 @@ renderer.setAnimationLoop(() => {
   atmosphere.uAtmoTime.value = elapsed;
   atmosphere.uAtmoSky.value.copy(sky.state.skyHorizon).lerp(sky.state.skyTop, 0.5).multiplyScalar(sky.state.ambientIntensity);
   atmosphere.uAtmoCloudCover.value = CONFIG.sky.clouds.cover;
+  atmosphere.uAtmoSkyTop.value.copy(sky.state.skyTop);
+  hillShadows.update(sky.lightDir);
+  atmosphere.uAtmoSkyHorizon.value.copy(sky.state.skyHorizon);
 
   // Light shafts: find where the sun is on screen; fade them out as it leaves view, climbs high or sets.
   const G = CONFIG.render.godRays;

@@ -96,6 +96,8 @@ export const CONFIG = {
     seabedDepth: 8,
     flatShading: false, // true = faceted low-poly look
     detail: 0.5, // fine unevenness in how the ground catches light, close up (0 = perfectly smooth)
+    // Soft shading in hollows and valleys, and under trees (0 = off for each).
+    occlusion: { strength: 0.85, underTrees: 0.45 },
     colors: {
       // (grass/ground colours are per biome, below)
       sand: '#cdbb8e',
@@ -279,6 +281,7 @@ export const CONFIG = {
     enabled: true,
     snowColor: '#eef2f6',
     snowLine: 0.55, // fraction of a range's height where snow begins
+    detail: 1, // how deeply the faces are carved by gullies (0 = flat)
     ranges: [
       { distance: 2400, height: 700,  gaps: 0.5,  haze: 0.22, color: '#56606e' },
       { distance: 4200, height: 1500, gaps: 0.42, haze: 0.42, color: '#5d6878' },
@@ -292,6 +295,14 @@ export const CONFIG = {
     highAirFog: 0.3, // share of the fog still present far above the mist (0..1)
     sunGlow: 0.16, // how much the haze brightens when you look toward the sun
     cloudShadows: 0.5, // how much passing clouds dim the sunlight on the ground (0 = off)
+    mistPatches: 0.6, // how patchy and drifting the mist is (0 = even haze)
+    // Long shadows cast by hills when the sun is low, far beyond ordinary shadows.
+    // `steps` = quality (0 = off), `reach` = how far away a hill can shade you (metres).
+    hillShadows: { steps: 40, reach: 360, softness: 0.04 },
+    // Soft light from the whole sky (captured from the sky itself every few seconds).
+    //   share: how much of the soft light comes from it rather than a plain sky/ground blend
+    //   strength: its brightness; groundBounce: light reflected up from the ground
+    skyLight: { enabled: true, share: 0.65, strength: 1.1, groundBounce: 0.95, size: 128, refreshSeconds: 2 },
     rimLight: 0.55, // sky-coloured light on the edges of things (0 = off)
   },
 
@@ -333,6 +344,7 @@ export const CONFIG = {
     speed: 1.4,
     direction: [0.8, 0.6], // which way gusts travel (x, z)
     gustLength: 38, // metres between gusts rolling across the grass
+    fieldVariation: 0.7, // patches of drier and lusher colour across fields of plants (0 = uniform)
   },
 
   // ── Time of day ───────────────────────────────────────────────────────────
@@ -378,6 +390,11 @@ export const CONFIG = {
 
   // ── Rendering ─────────────────────────────────────────────────────────────
   render: {
+    // One switch for the expensive settings: 'low', 'medium', 'high', 'ultra', or
+    // 'custom' to use the values below exactly as written. (Each preset is listed
+    // in QUALITY_PRESETS at the bottom of this file.) Changeable in the G panel.
+    quality: 'high',
+    toneMapping: 'neutral', // 'neutral' (truest colours), 'aces' (punchier, warmer) or 'agx' (softest)
     fov: 65,
 maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = faster)
     antialias: 4, // MSAA samples: 0, 2 or 4
@@ -436,3 +453,44 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     gui: true, // press G in-game for a live tweak panel
   },
 };
+
+// ── Quality presets ─────────────────────────────────────────────────────────
+// Each preset overrides just these settings. The choice in the G panel is
+// remembered by the browser and wins over `render.quality` above.
+export const QUALITY_PRESETS = {
+  low: {
+    render: { maxPixelRatio: 1, antialias: 0, shadowMapSize: 1024, shadowDistance: 45, drawDistanceScale: 0.65, farDrawDistance: 380, godRays: { enabled: false }, adaptive: { minScale: 0.5 } },
+    atmosphere: { hillShadows: { steps: 0 }, skyLight: { enabled: false } },
+  },
+  medium: {
+    render: { maxPixelRatio: 1.25, antialias: 2, shadowMapSize: 2048, shadowDistance: 60, drawDistanceScale: 0.85, farDrawDistance: 450, godRays: { enabled: true, samples: 28 } },
+    atmosphere: { hillShadows: { steps: 24 }, skyLight: { enabled: true, size: 64 } },
+  },
+  high: {
+    render: { maxPixelRatio: 1.5, antialias: 4, shadowMapSize: 2048, shadowDistance: 70, drawDistanceScale: 1, farDrawDistance: 520, godRays: { enabled: true, samples: 44 } },
+    atmosphere: { hillShadows: { steps: 40 }, skyLight: { enabled: true, size: 128 } },
+  },
+  ultra: {
+    render: { maxPixelRatio: 2, antialias: 4, shadowMapSize: 4096, shadowDistance: 110, drawDistanceScale: 1.35, farDrawDistance: 700, godRays: { enabled: true, samples: 60 } },
+    atmosphere: { hillShadows: { steps: 64, reach: 480 }, skyLight: { enabled: true, size: 256 } },
+  },
+};
+
+(function applyQualityPreset() {
+  let chosen = CONFIG.render.quality;
+  try {
+    chosen = localStorage.getItem('terra.quality') || chosen;
+  } catch {
+    // (storage unavailable: use the setting above)
+  }
+  CONFIG.render.quality = chosen;
+  const preset = QUALITY_PRESETS[chosen];
+  if (!preset) return; // 'custom': the values above, as written
+  const merge = (target, source) => {
+    for (const [key, value] of Object.entries(source)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) merge((target[key] ??= {}), value);
+      else target[key] = value;
+    }
+  };
+  merge(CONFIG, preset);
+})();

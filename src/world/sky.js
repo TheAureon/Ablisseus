@@ -101,6 +101,16 @@ const skyFragment = /* glsl */ `
     col += uSunColor * uSunStrength * (smoothstep(0.9993, 0.9996, s) * 6.0 + pow(s, 400.0) * 0.8 + pow(s, 12.0) * 0.25);
     // When the sun is low, its whole side of the sky warms, most of all near the horizon.
     float lowSun = 1.0 - smoothstep(0.0, 0.45, uSunDir.y);
+
+    // Twilight, opposite the sun: the earth's own shadow rises as a blue-grey
+    // band along the horizon, with a pink glow (the belt of Venus) above it.
+    vec3 flatSun = normalize(vec3(uSunDir.x, 0.0, uSunDir.z) + 1e-5);
+    float opposite = max(dot(normalize(vec3(dir.x, 0.0, dir.z) + 1e-5), -flatSun), 0.0);
+    float twilight = smoothstep(-0.24, -0.03, uSunDir.y) * (1.0 - smoothstep(0.03, 0.22, uSunDir.y));
+    col = mix(col, col * vec3(0.6, 0.66, 0.88), twilight * opposite * (1.0 - smoothstep(0.0, 0.07, h)) * 0.7);
+    col += vec3(0.5, 0.22, 0.3) * twilight * pow(opposite, 1.5) * smoothstep(0.03, 0.09, h) * (1.0 - smoothstep(0.11, 0.3, h)) * 0.5;
+    // A thin brighter line where sky meets sea.
+    col += uHorizon * exp(-h * 22.0) * 0.1;
     col += uSunColor * uSunStrength * lowSun * pow(s, 2.5) * (1.0 - h) * (1.0 - h) * 0.22;
     float m = max(dot(dir, -uSunDir), 0.0);
     col += vec3(0.75, 0.82, 1.0) * uMoonStrength * (smoothstep(0.9996, 0.9998, m) * 2.5 + pow(m, 300.0) * 0.25);
@@ -132,7 +142,8 @@ const skyFragment = /* glsl */ `
     #include <colorspace_fragment>
   }`;
 
-export function createSky(scene) {
+/** @param renderer needed to capture the sky as light for the world (see skyLight below) */
+export function createSky(scene, renderer) {
   const r = CONFIG.render;
 
   const dome = new THREE.Mesh(
@@ -200,6 +211,30 @@ export function createSky(scene) {
   scene.fog = new THREE.FogExp2('#ffffff', 0.004);
   scene.add(dome, stars, sun, sun.target, ambient);
 
+  // ── Sky light ──
+  // Every so often the sky is captured into a soft, blurred image that lights
+  // the world from every direction (scene.environment): blue from above, warm
+  // on the sun's side, a little bounce from the ground below. Shaded sides of
+  // things pick up the colour of the sky instead of going flat and dark, and
+  // shiny surfaces such as water reflect it.
+  const SL = CONFIG.atmosphere.skyLight;
+  const skyLight = { target: null, timer: 0, generator: null, capturedAt: -1 };
+  const envScene = new THREE.Scene();
+  const envGround = new THREE.Mesh(new THREE.CircleGeometry(1400, 24).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#000000', fog: false, side: THREE.DoubleSide }));
+  if (SL.enabled && renderer) {
+    skyLight.generator = new THREE.PMREMGenerator(renderer);
+    envScene.add(new THREE.Mesh(dome.geometry, dome.material)); // the same sky, at the origin
+    envGround.position.y = -40;
+    envScene.add(envGround);
+  }
+  function refreshSkyLight() {
+    envGround.material.color.copy(state.ambientGround).multiplyScalar(SL.groundBounce * state.ambientIntensity);
+    const target = skyLight.generator.fromScene(envScene, 0, 1, 3000, { size: SL.size });
+    scene.environment = target.texture;
+    skyLight.target?.dispose();
+    skyLight.target = target;
+  }
+
   const state = {}; // current blended keyframe, readable by other systems
   const sunDir = new THREE.Vector3();
   const lightDir = new THREE.Vector3();
@@ -247,6 +282,20 @@ export function createSky(scene) {
     ambient.color.copy(state.ambientSky);
     ambient.groundColor.copy(state.ambientGround);
     ambient.intensity = state.ambientIntensity;
+
+    if (skyLight.generator) {
+      // The sky light takes over most of the soft light; the simple ambient keeps a little.
+      ambient.intensity = state.ambientIntensity * (1 - SL.share);
+      scene.environmentIntensity = state.ambientIntensity * SL.share * SL.strength;
+      skyLight.timer -= extra.dt ?? 0;
+      // Recapture every few seconds, and at once if the time of day has jumped (the G panel slider).
+      const jumped = Math.abs(t - skyLight.capturedAt) > 0.004 && Math.abs(t - skyLight.capturedAt) < 0.996;
+      if (skyLight.timer <= 0 || !skyLight.target || jumped) {
+        skyLight.timer = SL.refreshSeconds;
+        skyLight.capturedAt = t;
+        refreshSkyLight();
+      }
+    }
 
     scene.fog.color.copy(state.skyHorizon);
     scene.fog.density = state.fogDensity * fogMultiplier;

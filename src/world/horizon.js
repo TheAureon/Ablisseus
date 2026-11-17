@@ -27,12 +27,8 @@ export function createHorizon() {
   H.ranges.forEach((range, layer) => {
     const segments = 420;
     const positions = [];
-    const colors = [];
     const normals = [];
     const hazes = [];
-    const rock = new THREE.Color(range.color);
-    const snow = new THREE.Color(H.snowColor);
-    const c = new THREE.Color();
 
     // Height profile around the ring: ridged noise, with stretches of open sea.
     const profile = [];
@@ -81,9 +77,6 @@ export function createHorizon() {
       quad.forEach((v, k) => {
         positions.push(...v);
         normals.push(n.x, n.y, n.z);
-        const t = heights[k] / range.height;
-        c.copy(rock).lerp(snow, THREE.MathUtils.smoothstep(t, H.snowLine - 0.12, H.snowLine + 0.12));
-        colors.push(c.r, c.g, c.b);
         // Haze: total at sea level, thinning toward the summits, thicker for far ranges.
         hazes.push(THREE.MathUtils.lerp(1, range.haze, THREE.MathUtils.smoothstep(heights[k], 0, range.height * 0.45)));
       });
@@ -92,37 +85,88 @@ export function createHorizon() {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geo.setAttribute('aHaze', new THREE.Float32BufferAttribute(hazes, 1));
 
+    // Each range has its own size and rock colour; the light is shared.
     const material = new THREE.ShaderMaterial({
-      uniforms,
+      uniforms: {
+        ...uniforms,
+        uRock: { value: new THREE.Color(range.color) },
+        uSnow: { value: new THREE.Color(H.snowColor) },
+        uHeight: { value: range.height },
+        uSnowLine: { value: H.snowLine },
+        uSeed: { value: layer * 13.7 },
+        uDetail: { value: H.detail },
+      },
       side: THREE.DoubleSide,
       fog: false,
       vertexShader: /* glsl */ `
-        attribute vec3 color;
         attribute float aHaze;
-        varying vec3 vColor;
+        varying vec3 vPos;
         varying vec3 vNormal;
         varying float vHaze;
         void main() {
-          vColor = color;
+          vec4 world = modelMatrix * vec4(position, 1.0);
+          vPos = world.xyz;
           vNormal = normal;
           vHaze = aHaze;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * viewMatrix * world;
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uHorizon;
         uniform vec3 uLight;
         uniform vec3 uAmbient;
         uniform vec3 uLightDir;
-        varying vec3 vColor;
+        uniform vec3 uRock;
+        uniform vec3 uSnow;
+        uniform float uHeight;
+        uniform float uSnowLine;
+        uniform float uSeed;
+        uniform float uDetail;
+        varying vec3 vPos;
         varying vec3 vNormal;
         varying float vHaze;
+
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float noise(vec2 p) {
+          vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+        }
+        float fbm(vec2 p) {
+          float v = 0.0; float a = 0.5;
+          for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.07 + 13.1; a *= 0.5; }
+          return v;
+        }
+
         void main() {
-          float lit = max(dot(normalize(vNormal), uLightDir), 0.0);
-          vec3 col = vColor * (uAmbient + uLight * lit);
-          col = mix(col, uHorizon, clamp(vHaze, 0.0, 1.0));
+          float t = clamp(vPos.y / uHeight, 0.0, 1.0);   // 0 at the sea … 1 at the highest peaks
+          float around = atan(vPos.z, vPos.x) * length(vPos.xz);   // metres along the ring
+
+          // Erosion: gullies and spurs running down the face, stretched vertically.
+          vec2 q = vec2(around * 1.5, vPos.y * 0.42) / uHeight * 7.0 + uSeed;
+          float n = fbm(q);
+          float nSide = fbm(q + vec2(0.035, 0.0));
+          float nUp = fbm(q + vec2(0.0, 0.035));
+
+          // Light the face as if it were carved: tilt the normal by the slope of the gullies.
+          vec3 across = normalize(vec3(-vPos.z, 0.0, vPos.x));
+          vec3 N = normalize(normalize(vNormal) + (across * (nSide - n) + vec3(0.0, nUp - n, 0.0) * 0.6) / 0.035 * 0.55 * uDetail);
+          float lit = max(dot(N, uLightDir), 0.0);
+
+          // Snow settles above a ragged line, deeper in the gullies than on the spurs.
+          float line = uSnowLine + (n - 0.5) * 0.45;
+          float snow = smoothstep(line, line + 0.06, t);
+          vec3 rock = uRock * (0.82 + 0.3 * n) * (0.94 + 0.06 * sin(vPos.y * 0.035 + n * 5.0));   // faint strata
+          vec3 surface = mix(rock, uSnow, snow);
+          vec3 col = surface * (uAmbient * (0.75 + 0.5 * n) + uLight * lit);
+
+          // Aerial perspective: distance and low altitude dissolve the range into
+          // the sky, and the haze glows on the side facing the sun.
+          vec3 toward = normalize(vPos - cameraPosition);
+          float sunSide = pow(max(dot(toward, uLightDir), 0.0), 4.0);
+          vec3 haze = uHorizon + uLight * 0.12 * sunSide;
+          col = mix(col, haze, clamp(vHaze, 0.0, 1.0));
+
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>

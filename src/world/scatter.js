@@ -20,20 +20,24 @@ function addSway(material, amount, height, thin) {
     shader.uniforms.uGustLength = { value: CONFIG.wind.gustLength };
     shader.uniforms.uPlantHeight = { value: Math.max(height, 0.05) };
     shader.uniforms.uThin = { value: thin ? 1 : 0 };
+    shader.uniforms.uFieldVariation = { value: CONFIG.wind.fieldVariation };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uSway;\nuniform float uWindSpeed;\nuniform vec2 uWindDir;\nuniform float uGustLength;\nuniform float uPlantHeight;\nvarying float vPlantHeight;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uSway;\nuniform float uWindSpeed;\nuniform vec2 uWindDir;\nuniform float uGustLength;\nuniform float uPlantHeight;\nvarying float vPlantHeight;\nvarying vec2 vField;\nfloat fieldHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat fieldNoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(fieldHash(i), fieldHash(i + vec2(1.0, 0.0)), f.x), mix(fieldHash(i + vec2(0.0, 1.0)), fieldHash(i + vec2(1.0, 1.0)), f.x), f.y); }')
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
         vPlantHeight = clamp(position.y / uPlantHeight, 0.0, 1.0);
         #ifdef USE_INSTANCING
           vec2 plantAt = instanceMatrix[3].xz;
+          // Broad patches across a field: some sun-dried, some lush (x), some lighter or darker (y).
+          vField = vec2(fieldNoise(plantAt * 0.021), fieldNoise(plantAt * 0.053 + 19.0));
           // The wind's direction, seen from this (randomly turned) plant's own point of view.
           vec3 windLocal = transpose(mat3(instanceMatrix)) * vec3(uWindDir.x, 0.0, uWindDir.y);
           windLocal /= max(dot(windLocal, windLocal), 1e-5);
           float plantScale = length(instanceMatrix[0].xyz);
         #else
           vec2 plantAt = vec2(0.0);
+          vField = vec2(0.5);
           vec3 windLocal = vec3(uWindDir.x, 0.0, uWindDir.y);
           float plantScale = 1.0;
         #endif
@@ -50,12 +54,14 @@ function addSway(material, amount, height, thin) {
         transformed.y -= lean * lean * reach * 0.35;   // a bent stem is a little shorter`,
       );
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uSunDir;\nuniform vec3 uSunColor;\nuniform float uThin;\nvarying float vPlantHeight;')
+      .replace('#include <common>', '#include <common>\nuniform vec3 uSunDir;\nuniform vec3 uSunColor;\nuniform float uThin;\nuniform float uFieldVariation;\nvarying float vPlantHeight;\nvarying vec2 vField;')
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         // Darker where the plant meets the ground, brighter at the tips.
-        diffuseColor.rgb *= mix(0.72, 1.08, smoothstep(0.0, 0.85, vPlantHeight));`,
+        diffuseColor.rgb *= mix(0.72, 1.08, smoothstep(0.0, 0.85, vPlantHeight));
+        vec3 fieldTint = mix(vec3(1.07, 1.02, 0.8), vec3(0.86, 1.0, 0.95), smoothstep(0.25, 0.75, vField.x));
+        diffuseColor.rgb *= mix(vec3(1.0), fieldTint * (0.9 + 0.2 * vField.y), uFieldVariation);`,
       )
       .replace(
         '#include <emissivemap_fragment>',
@@ -165,6 +171,12 @@ function buildInstances(parts, layer, items) {
 // is what keeps the frame rate up with tens of thousands of grass tufts.
 const chunks = [];
 
+/**
+ * Where the trees stand: { x, z, r } with r the radius of the canopy. Filled
+ * in by createScatter; the terrain darkens the ground beneath them.
+ */
+export const canopies = [];
+
 export function createScatter(templates, trails) {
   const group = new THREE.Group();
   const size = CONFIG.render.chunkSize;
@@ -174,8 +186,13 @@ export function createScatter(templates, trails) {
     if (!template) return console.warn(`[scatter] Unknown asset "${layer.asset}"`);
     const parts = flattenTemplate(template, layer); // shared by every chunk of the layer
 
+    // Tall shadow-casting props (trees) leave shade on the ground beneath them.
+    const box = new THREE.Box3().setFromObject(template);
+    const canopy = layer.castShadow && box.max.y > 2.5 ? Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.5 : 0;
+
     const cells = new Map();
     for (const item of placeLayer(layer, index, trails)) {
+      if (canopy) canopies.push({ x: item.x, z: item.z, r: canopy * Math.hypot(item.matrix.elements[0], item.matrix.elements[1], item.matrix.elements[2]) });
       const key = Math.floor(item.x / size) + ',' + Math.floor(item.z / size);
       if (!cells.has(key)) cells.set(key, []);
       cells.get(key).push(item);
