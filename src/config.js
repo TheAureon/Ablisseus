@@ -431,9 +431,11 @@ export const CONFIG = {
       { t: 0.80, skyTop: '#0c0f2c', skyHorizon: '#3a2f5c', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0033, stars: 0.8, motes: 1.0, exposure: 1.35},
       { t: 1.00, skyTop: '#04050d', skyHorizon: '#141c3a', lightColor: '#8fa8ff', lightIntensity: 1.1, ambientSky: '#4a5c9c', ambientGround: '#1d2440', ambientIntensity: 1.7, fogDensity: 0.0028, stars: 1.0, motes: 1.0, exposure: 1.35},
     ],
-    starCount: 4500,
-    milkyWay: 0.6, // brightness of the band of stars across the night sky (0 = off)
-    clouds: { cover: 0.42 }, // 0 = clear sky … 1 = overcast
+    // density: how many (1 = normal), brightness, twinkle: how much they shimmer (strongest low in the sky)
+    stars: { density: 1, brightness: 1, twinkle: 0.4 },
+    milkyWay: 0.8, // brightness of the band of stars across the night sky (0 = off)
+    // cover: heaped cumulus, 0 = clear sky … 1 = overcast; cirrus: high wispy streaks (0 = none)
+    clouds: { cover: 0.55, cirrus: 0.6 },
     aurora: { strength: 0.12, inSnow: 0.7 }, // night aurora everywhere / while in the snow biome
     // An immense pale world low in the sky, visible day and night.
     planet: { enabled: true, direction: [-0.55, 0.3, -0.78], sizeDegrees: 11, colorA: '#c9b79c', colorB: '#8fa3c7' },
