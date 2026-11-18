@@ -490,6 +490,14 @@ export function starfish(color = '#e0703a') {
   return g;
 }
 
+/** A flat-topped stone for crossing a stream: 1 m tall at scale 1 (scaled to the water's depth). */
+export function steppingStone() {
+  const g = new THREE.Group();
+  const stone = mesh(new THREE.CylinderGeometry(0.36, 0.44, 1, 7), mat('#8a8780'), 0, 0.5, 0);
+  g.add(stone);
+  return g;
+}
+
 /** A sun-bleached log washed up on the sand. */
 export function driftwood() {
   const g = new THREE.Group();
@@ -503,40 +511,6 @@ export function driftwood() {
   const stub = mesh(new THREE.CylinderGeometry(0.03, 0.06, 0.5, 5), wood, -0.6, 0.25, -0.15);
   stub.rotation.set(-0.8, 0, -0.4);
   g.add(stub);
-  return g;
-}
-
-/**
- * A tide pool: a ring of rocks holding still, clear water, with a few
- * creatures in it. Sits on a flat rock shelf (see shore.js).
- */
-export function rockPool() {
-  const g = new THREE.Group();
-  const stone = mat('#8b8780');
-  const dark = mat('#6f6c68');
-  // The rim: low uneven rocks, with gaps between them
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * Math.PI * 2 + Math.sin(i * 2.1) * 0.25;
-    const r = 1.55 + Math.sin(i * 1.7) * 0.2;
-    const s = 0.16 + ((i * 5) % 4) * 0.045;
-    g.add(blob(new THREE.DodecahedronGeometry(1, 0), i % 3 ? stone : dark, Math.cos(a) * r, s * 0.3, Math.sin(a) * r, s * 1.5, s * 0.7, s, 0.2));
-  }
-  // The floor of the pool, a darker damp ring round it, then the water
-  g.add(mesh(new THREE.CircleGeometry(1.75, 16).rotateX(-Math.PI / 2), mat('#55534f'), 0, 0.012, 0));
-  g.add(mesh(new THREE.CircleGeometry(1.4, 16).rotateX(-Math.PI / 2), mat('#3b4a47'), 0, 0.024, 0));
-  const water = new THREE.MeshStandardMaterial({ color: '#4fa3a4', transparent: true, opacity: 0.5, roughness: 0.05, metalness: 0.15 });
-  g.add(mesh(new THREE.CircleGeometry(1.36, 16).rotateX(-Math.PI / 2), water, 0, 0.1, 0));
-  // Life: anemones, a starfish, a few pebbles
-  const anemone = (color, x, z, s) => g.add(blob(new THREE.IcosahedronGeometry(0.11, 0), mat(color, { emissive: color, emissiveIntensity: 0.25 }), x, 0.06, z, s, s * 0.8, s));
-  anemone('#c8405a', 0.5, 0.3, 1);
-  anemone('#8a4fc0', -0.6, -0.2, 0.8);
-  anemone('#e08a3a', 0.1, -0.75, 0.7);
-  anemone('#c8405a', -0.25, 0.7, 0.6);
-  const star = starfish('#e0703a');
-  star.position.set(-0.1, 0.05, 0.1);
-  star.scale.setScalar(1.4);
-  g.add(star);
-  for (let i = 0; i < 5; i++) g.add(blob(new THREE.DodecahedronGeometry(0.07, 0), dark, Math.cos(i * 2.4) * 0.9, 0.05, Math.sin(i * 2.4) * 0.9, 1, 0.6, 1, i));
   return g;
 }
 

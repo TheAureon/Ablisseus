@@ -9,6 +9,7 @@ import { heightAt, approxHeightAt, approxSlopeAt } from './terrain.js';
 import { noise2, seededRandom, smoothstep } from './noise.js';
 import { approxBiomeWeight, biomeIndex } from './biomes.js';
 import { randomIslandPoint } from './islands.js';
+import { inlandWaterAt } from './hydrology.js';
 
 function addSway(material, amount, height, thin) {
   const m = material.clone();
@@ -108,6 +109,8 @@ function placeLayer(layer, index, trails) {
 
     const y = heightAt(x, z); // the exact height, for the few that survive
     if (y < minH || y > maxH) continue;
+    // Nothing grows in rivers or lakes (reeds and the like may stand in the shallows).
+    if (inlandWaterAt(x, z) > y - (layer.wade ?? -0.05)) continue;
 
     dummy.position.set(x, y - (layer.sink ?? 0), z);
     dummy.rotation.set(0, rand() * Math.PI * 2, 0);
@@ -223,7 +226,7 @@ export function updateScatter(cameraPosition) {
 /**
  * Instances hand-placed props (trail furniture) through the same chunked,
  * culled path as the scatter layers.
- * @param placements [{ x, z, rotation, scale }] — y snaps to the ground
+ * @param placements [{ x, z, rotation, scale, y?, scaleY? }] — y snaps to the ground unless given
  */
 export function createPlacedProps(template, name, placements, options = {}) {
   const group = new THREE.Group();
@@ -234,9 +237,10 @@ export function createPlacedProps(template, name, placements, options = {}) {
 
   const cells = new Map();
   for (const p of placements) {
-    dummy.position.set(p.x, heightAt(p.x, p.z), p.z);
+    dummy.position.set(p.x, p.y ?? heightAt(p.x, p.z), p.z);
     dummy.rotation.set(0, p.rotation ?? 0, 0);
     dummy.scale.setScalar(p.scale ?? 1);
+    if (p.scaleY) dummy.scale.y = p.scaleY; // (stepping stones: as tall as the water is deep)
     dummy.updateMatrix();
     const key = Math.floor(p.x / size) + ',' + Math.floor(p.z / size);
     if (!cells.has(key)) cells.set(key, []);

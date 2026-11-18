@@ -5,6 +5,7 @@
 //   leaves    rustling in wooded biomes
 //   water     lapping near lakes and the shore
 //   fire      a low roar and crackles near a campfire
+//   stream    babbling near rivers; waterfalls roar
 //   birds     daytime song, busier in lush biomes
 //   crickets  at night
 //   owls      now and then at night in the woods
@@ -108,6 +109,13 @@ export function startAudio() {
   wobble(layers.water.filter.frequency, 0.16, 300); // waves washing in and out
 
   layers.fire = noiseLayer('lowpass', 210, 0.5);
+
+  // Running water: a bright babble for streams, a deep roar for waterfalls.
+  layers.stream = noiseLayer('bandpass', 1500, 0.6);
+  wobble(layers.stream.filter.frequency, 2.3, 420);
+  wobble(layers.stream.filter.frequency, 3.7, 260);
+  layers.falls = noiseLayer('lowpass', 700, 0.3);
+  wobble(layers.falls.filter.frequency, 0.4, 120);
 
   // Awe: a very low, slowly breathing chord (root, fifth, octave) that you feel
   // more than hear. It rises on high ground and near landmarks.
@@ -213,6 +221,8 @@ function fireCrackle(t, volume) {
  *   water  — how close open water is
  *   fire   — how close a campfire is
  *   woods  — how wooded it is here (for owls)
+ *   stream — how close (and how big) the nearest river is
+ *   falls  — how close (and how tall) the nearest waterfall is
  *   awe    — how grand the moment is: high ground, or standing before a landmark
  */
 export function updateSoundscape(dt, env) {
@@ -225,6 +235,8 @@ export function updateSoundscape(dt, env) {
   set(layers.leaves, c.leavesVolume * env.leaves * 3);
   set(layers.water, c.waterVolume * env.water * 1.6);
   set(layers.fire, c.fireVolume * env.fire * 0.9);
+  set(layers.stream, c.streamVolume * (env.stream ?? 0) * 2.2);
+  set(layers.falls, c.fallsVolume * (env.falls ?? 0) * 1.8);
   layers.awe.gain.gain.setTargetAtTime(c.aweVolume * (env.awe ?? 0), now, 3.5); // swells and fades slowly
 
   // Birds by day
