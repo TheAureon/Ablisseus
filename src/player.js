@@ -156,15 +156,16 @@ export function createPlayer(camera, canvas) {
     const surface = seaLevel + swellAt(position.x, position.z, atmosphere.uTime.value) * 0.7; // you ride the swell
     const floatY = surface - c.swimFloatDepth; // where your feet hang when floating
     const swimming = !airborne && floatY > ground;
+    const swimSpeed = c.walkSpeed * c.swimFactor; // (read each frame, so the G panel's speed sliders apply)
     swim += ((swimming ? 1 : 0) - swim) * ease(4, dt);
 
     if (swimming) {
-      pace = held('sprint') ? c.swimSprintSpeed : c.swimSpeed;
+      pace = held('sprint') ? c.sprintSpeed * c.swimSprintFactor : swimSpeed;
       if (backwards) pace *= 0.6; // backwards is awkward
     } else {
       // Knee-deep barely matters; chest-deep is slow going.
       const wade = Math.min(1, depth / c.swimFloatDepth);
-      pace = THREE.MathUtils.lerp(pace, Math.min(pace, c.swimSpeed), wade * wade);
+      pace = THREE.MathUtils.lerp(pace, Math.min(pace, swimSpeed), wade * wade);
     }
 
     // Slopes: slower uphill, a touch quicker downhill (not while afloat).
@@ -269,7 +270,7 @@ export function createPlayer(camera, canvas) {
     right.set(Math.cos(euler.y), 0, -Math.sin(euler.y));
     const sideSpeed = velocity.dot(right);
     lean += ((-sideSpeed / c.walkSpeed) * c.strafeLean - lean) * ease(5, dt);
-    const strokeBob = swim * Math.min(1, speed / c.swimSpeed);
+    const strokeBob = swim * Math.min(1, speed / (c.walkSpeed * c.swimFactor));
     euler.z = lean + Math.sin(stride) * c.bobRoll * bobScale + Math.sin(stroke * 0.5) * 0.012 * strokeBob;
 
     fovOffset += (hurry * c.sprintFov - fovOffset) * ease(3, dt);

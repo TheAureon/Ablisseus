@@ -59,8 +59,9 @@ export const CONFIG = {
 
     // Water: wading slows you with depth; where it is deep enough you float and swim.
     swimFloatDepth: 1.4, // metres of water you float in — the waterline sits at about your shoulders
-    swimSpeed: 1.7, // metres / second
-    swimSprintSpeed: 2.8, // with Shift
+    // Swimming speed follows your walking and sprint speeds, so changing those changes it too.
+    swimFactor: 0.65, // swimming speed as a fraction of walkSpeed (0.65 × 2.6 ≈ 1.7 m/s)
+    swimSprintFactor: 0.54, // with Shift, as a fraction of sprintSpeed (0.54 × 5.2 ≈ 2.8 m/s)
     strokeRate: 0.75, // strokes per second
     jumpMaxDepth: 0.7, // no jumping in water deeper than this
     spawn: [-500, 0], // x, z — snaps to the nearest level, dry ground (this is the middle of the home island)
