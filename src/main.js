@@ -310,7 +310,7 @@ function announceLandmark(position) {
 }
 
 // Surroundings that are a little costly to work out are refreshed a few times a second.
-const woodedBiomes = ['pines', 'autumn', 'jungle', 'marsh'].map(biomeIndex).filter((i) => i >= 0);
+const woodedBiomes = ['pines', 'autumn', 'jungle', 'marsh', 'fungal', 'bamboo', 'birch'].map(biomeIndex).filter((i) => i >= 0);
 const surroundings = { water: 0, timer: 0 };
 const frameWeights = new Float32Array(BIOME_NAMES.length); // this frame's biome mix, kept separate from the shared scratch array
 

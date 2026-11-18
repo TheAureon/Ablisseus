@@ -49,7 +49,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | I want to… | Edit |
 |---|---|
 | Change any number: speeds, island size/shape, colours, prop counts, sky colours, fog, day length, bloom | `src/config.js` |
-| Add, move or resize an island; choose its biomes | `islands` in `src/config.js` |
+| Add, move or resize an island; choose its biomes and which island you swim to it from | `islands` in `src/config.js` |
 | Add, remove or restyle a biome; choose what grows in it | `biomes` and `scatter` in `src/config.js` |
 | Change waves, tide, beaches, tide pools | `water`, `tidePools` and `terrain.beach` in `src/config.js` |
 | Change landmarks, footpaths, lanterns, camps | `landmarks`, `trails`, `campfire` in `src/config.js` |

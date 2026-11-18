@@ -223,6 +223,80 @@ export function basalt(color = '#3d3b3e', columns = 7, spread = 0.55, tallest = 
   return g;
 }
 
+// ── The small islands' plants and rocks ─────────────────────────────────────
+
+/** A mushroom: pale stem, broad cap with a faintly glowing underside. About 0.5 m tall at scale 1. */
+export function mushroom(cap = '#7b5ba8', stem = '#e6e0d0', glow = '#7fe3ff') {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.4, 6), mat(stem), 0, 0.2, 0));
+  const top = mesh(new THREE.SphereGeometry(0.22, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), mat(cap), 0, 0.38, 0);
+  top.scale.y = 0.6;
+  g.add(top);
+  const gills = new THREE.MeshStandardMaterial({ color: '#222233', emissive: glow, emissiveIntensity: 0.9, side: THREE.DoubleSide });
+  g.add(mesh(new THREE.CircleGeometry(0.21, 8).rotateX(Math.PI / 2), gills, 0, 0.375, 0));
+  return g;
+}
+
+/** A tall mushroom, tree-sized. */
+export function mushroomTall(cap = '#5d6fb8') {
+  const g = mushroom(cap, '#dcd6c4', '#8ff0ff');
+  g.scale.setScalar(9);
+  return g;
+}
+
+/** A cluster of crystal points with a faint inner glow. About 1.5 m tall at scale 1. */
+export function crystal(color = '#b58cf0', glow = '#8a4fd8') {
+  const g = new THREE.Group();
+  const gem = new THREE.MeshStandardMaterial({ color, roughness: 0.2, metalness: 0.1, flatShading: true, emissive: glow, emissiveIntensity: 0.55 });
+  for (const [x, z, h, r, tx, tz] of [[0, 0, 1.5, 0.22, 0, 0], [0.25, 0.1, 1.0, 0.16, 0, -0.4], [-0.2, 0.15, 0.9, 0.15, 0.35, 0.3], [0.05, -0.25, 0.75, 0.13, -0.45, 0.1], [-0.15, -0.15, 0.55, 0.1, -0.2, -0.5]]) {
+    const point = mesh(new THREE.ConeGeometry(r, h, 6), gem, x, h / 2 - 0.05, z);
+    point.rotation.set(tx, 0, tz);
+    g.add(point);
+  }
+  return g;
+}
+
+/** A clump of bamboo canes with leaf tufts near the top. About 7 m tall at scale 1. */
+export function bamboo() {
+  const g = new THREE.Group();
+  const cane = mat('#7fa040');
+  const leaves = mat('#5f8f3a', { side: THREE.DoubleSide });
+  for (let i = 0; i < 7; i++) {
+    const a = i * 2.4;
+    const d = 0.15 + (i % 3) * 0.18;
+    const h = 5.2 + ((i * 7) % 5) * 0.5;
+    const x = Math.cos(a) * d;
+    const z = Math.sin(a) * d;
+    const stalk = mesh(new THREE.CylinderGeometry(0.05, 0.065, h, 5, 4), cane, x, h / 2, z);
+    stalk.rotation.set(Math.sin(a) * 0.05, 0, Math.cos(a) * 0.05);
+    g.add(stalk);
+    for (let k = 0; k < 3; k++) {
+      const leaf = mesh(new THREE.ConeGeometry(0.14, 0.9, 3), leaves, x, h * (0.72 + k * 0.1), z);
+      leaf.scale.z = 0.25;
+      leaf.rotation.set(0, a + k * 2.1, -Math.PI / 2 + 0.6);
+      leaf.rotation.order = 'YZX';
+      g.add(leaf);
+    }
+  }
+  return g;
+}
+
+/** Branching coral for the shallows. About 0.7 m tall at scale 1. */
+export function coral(color = '#e8705a') {
+  const g = new THREE.Group();
+  const reef = mat(color, { emissive: color, emissiveIntensity: 0.15 });
+  for (let i = 0; i < 6; i++) {
+    const a = i * 1.9;
+    const lean = 0.25 + (i % 3) * 0.2;
+    const h = 0.4 + (i % 4) * 0.12;
+    const arm = mesh(new THREE.CylinderGeometry(0.03, 0.05, h, 5), reef, Math.cos(a) * Math.sin(lean) * h * 0.5, Math.cos(lean) * h * 0.5, Math.sin(a) * Math.sin(lean) * h * 0.5);
+    arm.rotation.set(Math.sin(a) * lean, 0, -Math.cos(a) * lean);
+    g.add(arm);
+    g.add(mesh(new THREE.SphereGeometry(0.05, 5, 4), reef, Math.cos(a) * Math.sin(lean) * h, Math.cos(lean) * h, Math.sin(a) * Math.sin(lean) * h));
+  }
+  return g;
+}
+
 // ── Natural landmarks ────────────────────────────────────────────────────────
 // Large one-off features, one per biome. All are rough stand-ins.
 
@@ -303,9 +377,9 @@ export function stoneCircle(color = '#8a8478', moss = '#6b7f4a') {
 }
 
 /** A crown of pale ice crystals with a faint inner light. */
-export function iceCrown() {
+export function iceCrown(color = '#bfe3f5', glow = '#5fb6e8') {
   const g = new THREE.Group();
-  const ice = new THREE.MeshStandardMaterial({ color: '#bfe3f5', roughness: 0.25, metalness: 0.1, flatShading: true, emissive: '#5fb6e8', emissiveIntensity: 0.45 });
+  const ice = new THREE.MeshStandardMaterial({ color, roughness: 0.25, metalness: 0.1, flatShading: true, emissive: glow, emissiveIntensity: 0.45 });
   const shard = (x, z, h, r, tx, tz) => {
     const m = mesh(new THREE.ConeGeometry(r, h, 5), ice, x, h / 2 - 0.3, z);
     m.rotation.set(tx, x + z, tz);
@@ -354,6 +428,48 @@ export function cinderCone() {
   for (let i = 0; i < 9; i++) {
     const a = i * 0.7;
     g.add(blob(new THREE.DodecahedronGeometry(1, 0), ash, Math.cos(a) * (25 + (i % 3) * 2), 0.8, Math.sin(a) * (25 + (i % 3) * 2), 1.6 + (i % 2), 1.2, 1.5, i));
+  }
+  return g;
+}
+
+/** A giant mushroom, big enough to stand under. */
+export function elderCap() {
+  const g = mushroom('#6a4fb0', '#e2dccb', '#9ff4ff');
+  g.scale.setScalar(26);
+  return g;
+}
+
+/** The ribs and jaw of a long-dead whale, half sunk in the sand. */
+export function whaleRibs() {
+  const g = new THREE.Group();
+  const bone = mat('#e9e3d2');
+  for (let i = 0; i < 9; i++) {
+    const z = (i - 4) * 1.6;
+    const size = 3.6 - Math.abs(i - 3.5) * 0.35;
+    // Each rib is a half ring standing upright, across the body.
+    const rib = mesh(new THREE.TorusGeometry(size, 0.16, 5, 14, Math.PI), bone, 0, -0.4, z);
+    rib.rotation.z = (i % 2 ? 0.08 : -0.06);
+    g.add(rib);
+  }
+  const spine = mesh(new THREE.CylinderGeometry(0.22, 0.18, 15, 6), bone, 0, 3.0, 0);
+  spine.rotation.x = Math.PI / 2;
+  g.add(spine);
+  const jaw = mesh(new THREE.CylinderGeometry(0.18, 0.3, 6, 6), bone, 1.2, 0.2, 10.5);
+  jaw.rotation.set(Math.PI / 2 - 0.08, 0.2, 0);
+  g.add(jaw);
+  return g;
+}
+
+/** Boulders balanced one on another. */
+export function balancedStone() {
+  const g = new THREE.Group();
+  const stone = mat('#8d8a82');
+  const dark = mat('#6d6b66');
+  let y = 0;
+  for (const [r, dx, color] of [[1.6, 0, dark], [1.15, 0.2, stone], [0.8, -0.15, stone], [0.5, 0.1, dark]]) {
+    y += r * 0.75;
+    g.add(blob(new THREE.DodecahedronGeometry(r, 0), color, dx, y, 0, 1.2, 0.8, 1.05, dx));
+    y += r * 0.65;
   }
   return g;
 }

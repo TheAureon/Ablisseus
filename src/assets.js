@@ -53,6 +53,17 @@ export const ASSETS = {
   willow:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.tree('#9fb86a', '#5c5040') },
   glowcap:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.glowcap },
 
+  // The small islands' plants and rocks
+  crystal:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.crystal },
+  rockSlate:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rock('#45424f') },
+  mushroom:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.mushroom },
+  mushroomTall: { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.mushroomTall },
+  hoodoo:       { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rockSpire('#b05a3a') },
+  rockRed:      { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rock('#a8553a') },
+  bamboo:       { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.bamboo },
+  treeBirch:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.tree('#e3bf4a', '#e8e4da') },
+  coral:        { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.coral },
+
   // Natural landmarks — one large feature per biome (placed via CONFIG.landmarks)
   elderTree:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.giantTree },
   motherBlossom:{ model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.giantTree('#f4a9cc', '#5a4038') },
@@ -60,6 +71,11 @@ export const ASSETS = {
   rockSpire:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.rockSpire },
   stoneCircle:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.stoneCircle },
   iceCrown:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.iceCrown },
+  geode:        { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.iceCrown('#b58cf0', '#8a4fd8') },
+  elderCap:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.elderCap },
+  balancedStone:{ model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.balancedStone },
+  silverBirch:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.giantTree('#efd060', '#ece8de') },
+  whaleRibs:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.whaleRibs },
   greatBanyan:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.giantTree('#2c6b3f', '#4a3b2c') },
   basaltOrgan:  { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.basaltOrgan },
   cinderCone:   { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.cinderCone },

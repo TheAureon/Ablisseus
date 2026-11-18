@@ -224,6 +224,7 @@ export function createMap({ landmarks, trails }) {
     ISLANDS.forEach((island, islandIndex) => {
       types.forEach((type, index) => {
         if (!island.biomes.includes(BIOME_NAMES[index])) return;
+        if (island.biomes.length === 1 && island.label) return; // the island's own name says it already
         let best = null;
         let bestScore = 0;
         for (let z = island.z - island.radius; z < island.z + island.radius; z += stepX) {

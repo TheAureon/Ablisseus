@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { heightAt, slopeAt, spawnPoint, addPad, addRoadBed } from './terrain.js';
-import { ISLANDS, islandIndexAt } from './islands.js';
+import { ISLANDS, islandIndexAt, islandByName } from './islands.js';
 
 const MASK_SIZE = 2048;
 
@@ -215,19 +215,20 @@ export function createTrails(landmarks) {
   // Walk the straight line between the two; the channel is the stretch of
   // water in which you pass from one island's side to the other's.
   const crossings = []; // { from, to: island indices; a, b: the shore points on each }
-  for (let i = 0; i < ISLANDS.length - 1; i++) {
-    const A = ISLANDS[i];
-    const B = ISLANDS[i + 1];
+  for (let to = 1; to < ISLANDS.length; to++) {
+    const B = ISLANDS[to];
+    const A = islandByName(B.from) ?? ISLANDS[to - 1]; // where you swim out from
+    const from = ISLANDS.indexOf(A);
     const d = Math.hypot(B.x - A.x, B.z - A.z);
     const at = (t) => [A.x + ((B.x - A.x) * t) / d, A.z + ((B.z - A.z) * t) / d];
     const firm = (t) => heightAt(...at(t)) > water + 1.2;
     let change = 0; // how far along the line we pass from A's side to B's
-    while (change < d && islandIndexAt(...at(change)) !== i + 1) change += 2;
+    while (change < d && islandIndexAt(...at(change)) !== to) change += 2;
     let a = change;
     while (a > 0 && !firm(a)) a -= 2; // back to A's shore
     let b = change;
     while (b < d && !firm(b)) b += 2; // on to B's shore
-    crossings.push({ from: i, to: i + 1, a: at(Math.max(0, a - 5)), b: at(Math.min(d, b + 5)) });
+    crossings.push({ from, to, a: at(Math.max(0, a - 5)), b: at(Math.min(d, b + 5)) });
   }
 
   // Each island has its own web of paths, spreading from a hub: the camp you

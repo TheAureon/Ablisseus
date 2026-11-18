@@ -149,6 +149,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
   const colors = new Float32Array(resolution * resolution * 3);
   const out = new THREE.Color();
   const alt = new THREE.Color();
+  const rockTint = new THREE.Color();
 
   for (let j = 0; j < resolution; j++) {
     for (let i = 0; i < resolution; i++) {
@@ -176,7 +177,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
         out.lerp(col.sand, 1 - smoothstep(water + c.sandHeight * 0.5, water + c.sandHeight * 1.5, y));
         out.lerp(col.seabed, 1 - smoothstep(water - 3, water - 0.3, y));
         const rockSlope = c.rockSlope / blend(weights, 'rockiness', 1); // some biomes (snow) cling to steeper ground
-        out.lerp(col.rock, smoothstep(rockSlope * 0.7, rockSlope * 1.3, steep));
+        out.lerp(blendColor(weights, 'rockColor', rockTint, c.colors.rock), smoothstep(rockSlope * 0.7, rockSlope * 1.3, steep));
         for (const shelf of shelves) {
           const d = Math.hypot(x - shelf.x, z - shelf.z);
           if (d < shelf.radius * 1.6) out.lerp(col.shelf, 1 - smoothstep(shelf.radius * 0.9, shelf.radius * 1.6, d));

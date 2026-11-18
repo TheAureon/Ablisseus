@@ -16,6 +16,15 @@ export const CONFIG = {
     { name: 'home',  label: 'The Home Isle',      x: -500, z: 0,  radius: 380, biomes: ['meadow', 'pines', 'autumn', 'desert', 'snow', 'blossom'] },
     { name: 'stone', label: 'The Stepping Stone', x: -95,  z: 25, radius: 85,  biomes: ['meadow'] },
     { name: 'far',   label: 'The Far Isle',       x: 420,  z: 40, radius: 520, biomes: ['jungle', 'lavender', 'ash', 'marsh', 'meadow', 'pines', 'autumn', 'desert', 'snow', 'blossom'] },
+
+    // Small islands, each with a biome found nowhere else. `from` is the island
+    // you swim out from to reach it (otherwise the one listed just before).
+    { name: 'shard',  label: 'Shardrock',      x: -770, z: -640, radius: 90,  biomes: ['crystal'],  from: 'home' },
+    { name: 'mycel',  label: 'The Mycel Isle', x: -300, z: -560, radius: 105, biomes: ['fungal'],   from: 'home' },
+    { name: 'mesa',   label: 'The Red Mesa',   x: 330,  z: -690, radius: 120, biomes: ['mesa'],     from: 'far' },
+    { name: 'bamboo', label: 'Bamboo Holm',    x: -560, z: 610,  radius: 100, biomes: ['bamboo'],   from: 'home' },
+    { name: 'birch',  label: 'Birchwhite',     x: -90,  z: 600,  radius: 90,  biomes: ['birch'],    from: 'far' },
+    { name: 'coral',  label: 'Coral Key',      x: 780,  z: 770,  radius: 100, biomes: ['atoll'],    from: 'far' },
   ],
 
   // ── Player ────────────────────────────────────────────────────────────────
@@ -162,6 +171,7 @@ export const CONFIG = {
   //   rockiness          – below 1, steep slopes keep their ground colour instead of turning to bare rock
   //   wind/leaves/birds/crickets – how much of each sound you hear there (0 = none)
   //   footstep           – what the ground sounds like: 'grass', 'sand' or 'snow'
+  //   rockColor          – colour of bare rock on steep ground (default: terrain.colors.rock)
   //   mapSymbol/mapDensity – how it is drawn on the map: 'pine', 'tree', 'tuft', 'dots', 'peak'; 0..1 how many
   biomes: {
     scale: 0.0032, // lower = larger regions
@@ -175,6 +185,13 @@ export const CONFIG = {
       desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08, wind: 1.2, leaves: 0.0, birds: 0.12, crickets: 0.5, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.5 },
       snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 2.3,  heightOffset: 44,  fog: 1.6,  motes: '#ffffff', bias: -0.08, rockiness: 0.5, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow', mapSymbol: 'peak', mapDensity: 0.4 },
       blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd', wind: 0.6, leaves: 0.6, birds: 1.2, crickets: 0.9, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.5 },
+      // The small islands' own
+      crystal:  { label: 'Shardrock',       ground: '#3d3a48', groundAlt: '#4a4558', heightScale: 1.1,  heightOffset: 3,    fog: 0.9,  motes: '#d8b8ff', rockiness: 0.6, rockColor: '#34303e', wind: 1.1, leaves: 0.0, birds: 0.05, crickets: 0.2, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.4 },
+      fungal:   { label: 'The Mycel Isle',  ground: '#4c5a6e', groundAlt: '#5e4f73', heightScale: 0.6,  heightOffset: 1,    fog: 1.6,  motes: '#a8f0ff', wind: 0.4, leaves: 0.2, birds: 0.2, crickets: 1.4, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.6 },
+      mesa:     { label: 'The Red Mesa',    ground: '#b4643f', groundAlt: '#c27a4c', heightScale: 1.4,  heightOffset: 6,    fog: 0.7,  motes: '#ffc9a0', rockiness: 1.6, rockColor: '#9a4a30', wind: 1.3, leaves: 0.0, birds: 0.15, crickets: 0.5, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.35 },
+      bamboo:   { label: 'Bamboo Holm',     ground: '#6f8f45', groundAlt: '#86a352', heightScale: 0.7,  heightOffset: 1,    fog: 1.2,  motes: '#e8ffc0', wind: 0.9, leaves: 1.2, birds: 1.1, crickets: 1.0, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.8 },
+      birch:    { label: 'Birchwhite',      ground: '#8f8a4a', groundAlt: '#a39350', heightScale: 0.65, heightOffset: 1,    fog: 1.0,  motes: '#ffe7a0', wind: 0.8, leaves: 1.0, birds: 1.0, crickets: 0.8, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.7 },
+      atoll:    { label: 'Coral Key',       ground: '#efe6c8', groundAlt: '#e3d6b0', heightScale: 0.25, heightOffset: -1.5, fog: 0.6,  motes: '#fff6d8', wind: 1.0, leaves: 0.3, birds: 0.7, crickets: 0.6, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.3 },
       // The Far Isle's own
       jungle:   { label: 'The Green Deep',  ground: '#2f6b3a', groundAlt: '#3f8046', heightScale: 1.05, heightOffset: 2,    fog: 1.7,  motes: '#c8ffb0', wind: 0.5, leaves: 1.1, birds: 1.5, crickets: 1.3, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.85 },
       lavender: { label: 'Violet Downs',    ground: '#7f8f5a', groundAlt: '#8e84a8', heightScale: 0.7,  heightOffset: 3,    fog: 0.85, motes: '#e3c8ff', wind: 0.9, leaves: 0.3, birds: 0.9, crickets: 0.9, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.5 },
@@ -229,6 +246,41 @@ export const CONFIG = {
     { biome: 'blossom', asset: 'grassPale',   count: 30000, height: [1.2, 30], maxSlope: 0.4,  scale: [1.0, 2.0], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.2, drawDistance: 150 },
     { biome: 'blossom', asset: 'flowerPink',  count: 4400,  height: [1.2, 30], maxSlope: 0.35, scale: [0.7, 1.4], cluster: { scale: 0.02, threshold: -0.1 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
 
+    // ── The small islands ──
+    // Shardrock — dark slate studded with glowing crystal
+    { biome: 'crystal',  asset: 'crystal',     count: 190,   height: [1, 80],   maxSlope: 0.8,  scale: [0.6, 2.2], colorJitter: 0.2, castShadow: true, drawDistance: 420 },
+    { biome: 'crystal',  asset: 'rockSlate',   count: 200,   height: [-1, 80],  maxSlope: 1.2,  scale: [0.4, 2.6], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'crystal',  asset: 'grassDark',   count: 500,   height: [1.2, 30], maxSlope: 0.35, scale: [0.6, 1.2], cluster: { scale: 0.05, threshold: 0.2 }, sway: 0.2, colorJitter: 0.3, drawDistance: 150 },
+
+    // The Mycel Isle — giant mushrooms over violet moss, glowing at night
+    { biome: 'fungal',   asset: 'mushroomTall', count: 170,  height: [1, 40],   maxSlope: 0.45, scale: [0.7, 2.0], sway: 0.008, colorJitter: 0.2, castShadow: true },
+    { biome: 'fungal',   asset: 'mushroom',    count: 800,   height: [0.8, 40], maxSlope: 0.5,  scale: [0.6, 1.6], cluster: { scale: 0.04, threshold: -0.2 }, colorJitter: 0.25, drawDistance: 160 },
+    { biome: 'fungal',   asset: 'glowcap',     count: 900,   height: [0.4, 40], maxSlope: 0.5,  scale: [0.8, 1.8], cluster: { scale: 0.05, threshold: 0.0 }, colorJitter: 0.1, drawDistance: 120 },
+    { biome: 'fungal',   asset: 'fern',        count: 1200,  height: [1, 40],   maxSlope: 0.5,  scale: [0.7, 1.5], sway: 0.1, colorJitter: 0.3, drawDistance: 110 },
+
+    // The Red Mesa — red rock, hoodoos and dry grass
+    { biome: 'mesa',     asset: 'hoodoo',      count: 45,    height: [2, 90],   maxSlope: 0.5,  scale: [0.9, 1.8], colorJitter: 0.15, castShadow: true },
+    { biome: 'mesa',     asset: 'rockRed',     count: 170,   height: [-1, 90],  maxSlope: 1.2,  scale: [0.4, 3.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'mesa',     asset: 'grassDry',    count: 1100,  height: [1.2, 60], maxSlope: 0.4,  scale: [0.7, 1.5], cluster: { scale: 0.04, threshold: 0.0 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
+    { biome: 'mesa',     asset: 'bush',        count: 130,   height: [1.2, 60], maxSlope: 0.4,  scale: [0.6, 1.3], colorJitter: 0.3, castShadow: true, drawDistance: 320 },
+
+    // Bamboo Holm — tall swaying bamboo over ferns
+    { biome: 'bamboo',   asset: 'bamboo',      count: 300,   height: [1, 40],   maxSlope: 0.45, scale: [0.8, 1.4], sway: 0.025, colorJitter: 0.2, castShadow: true },
+    { biome: 'bamboo',   asset: 'fern',        count: 1300,  height: [1, 40],   maxSlope: 0.5,  scale: [0.7, 1.6], sway: 0.12, colorJitter: 0.3, drawDistance: 110 },
+    { biome: 'bamboo',   asset: 'grassDark',   count: 2000,  height: [1.2, 40], maxSlope: 0.45, scale: [0.9, 1.8], cluster: { scale: 0.03, threshold: -0.3 }, sway: 0.2, colorJitter: 0.3, drawDistance: 150 },
+    { biome: 'bamboo',   asset: 'rock',        count: 35,    height: [-1, 60],  maxSlope: 1.0,  scale: [0.5, 1.6], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+
+    // Birchwhite — white birches in gold leaf over golden grass
+    { biome: 'birch',    asset: 'treeBirch',   count: 180,   height: [1.2, 40], maxSlope: 0.4,  scale: [0.8, 1.5], sway: 0.016, colorJitter: 0.2, castShadow: true },
+    { biome: 'birch',    asset: 'grassDry',    count: 2600,  height: [1.2, 40], maxSlope: 0.45, scale: [0.9, 1.9], cluster: { scale: 0.03, threshold: -0.35 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
+    { biome: 'birch',    asset: 'flower',      count: 400,   height: [1.2, 30], maxSlope: 0.35, scale: [0.7, 1.3], cluster: { scale: 0.02, threshold: 0.1 }, sway: 0.12, colorJitter: 0.1, drawDistance: 130 },
+    { biome: 'birch',    asset: 'mushroom',    count: 120,   height: [1.2, 30], maxSlope: 0.35, scale: [0.4, 0.8], colorJitter: 0.25, drawDistance: 100 },
+
+    // Coral Key — a low sandy key: palms, dune grass, and coral in the clear shallows
+    { biome: 'atoll',    asset: 'palm',        count: 80,    height: [0.8, 20], maxSlope: 0.4,  scale: [0.8, 1.5], sway: 0.02, colorJitter: 0.2, castShadow: true },
+    { biome: 'atoll',    asset: 'coral',       count: 700,   height: [-2.2, -0.25], maxSlope: 0.6, scale: [0.6, 1.8], colorJitter: 0.2, drawDistance: 140 },
+    { biome: 'atoll',    asset: 'grassPale',   count: 1200,  height: [1.0, 20], maxSlope: 0.4,  scale: [0.8, 1.6], cluster: { scale: 0.04, threshold: -0.1 }, sway: 0.25, colorJitter: 0.2, drawDistance: 150 },
+
     // ── The Far Isle's own biomes ──
     // The Green Deep — dense jungle: palms, broadleaf giants, ferns underfoot
     { biome: 'jungle',   asset: 'palm',        count: 520,   height: [1.2, 40], maxSlope: 0.45, scale: [0.8, 1.6], sway: 0.02,  colorJitter: 0.2, castShadow: true },
@@ -272,6 +324,12 @@ export const CONFIG = {
     { island: 'far',  asset: 'basaltOrgan',   biome: 'lavender', label: 'The Organ Pipes',    radius: 9,  scale: 1.4 },
     { island: 'far',  asset: 'cinderCone',    biome: 'ash',      label: 'The Cinder Cone',    radius: 26, scale: 1.2, prefer: 'summit' },
     { island: 'far',  asset: 'drownedStones', biome: 'marsh',    label: 'The Drowned Stones', radius: 10, scale: 1.2, prefer: 'low' },
+    { island: 'shard',  asset: 'geode',         biome: 'crystal', label: 'The Geode',          radius: 8,  scale: 1.2, prefer: 'summit' },
+    { island: 'mycel',  asset: 'elderCap',      biome: 'fungal',  label: 'The Elder Cap',      radius: 6,  scale: 1 },
+    { island: 'mesa',   asset: 'hoodoo',        biome: 'mesa',    label: 'The Hoodoo',         radius: 7,  scale: 1.3, prefer: 'summit' },
+    { island: 'bamboo', asset: 'balancedStone', biome: 'bamboo',  label: 'The Balanced Stone', radius: 5,  scale: 1.5 },
+    { island: 'birch',  asset: 'silverBirch',   biome: 'birch',   label: 'The Silver Birch',   radius: 6,  scale: 1.5 },
+    { island: 'coral',  asset: 'whaleRibs',     biome: 'atoll',   label: 'The Whale Bones',    radius: 8,  scale: 1.3 },
   ],
 
   // ── The far horizon ───────────────────────────────────────────────────────
