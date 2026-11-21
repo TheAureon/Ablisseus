@@ -190,6 +190,8 @@ export function createTerrain(pathTexture = null, canopies = []) {
   }
 
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: c.flatShading });
+  // Ground is matte: only a little of the shared sky-coloured rim light (see atmosphere.js).
+  material.defines = { ATMO_RIM_SCALE: CONFIG.terrain.surface.rim.toFixed(3) };
   // Without trails there is still a (blank) mask, so the shader is the same either way.
   const pathMap = pathTexture ?? new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
   pathMap.needsUpdate = true;
@@ -197,6 +199,8 @@ export function createTerrain(pathTexture = null, canopies = []) {
     applyAtmosphere(shader);
     shader.uniforms.uCaustics = { value: CONFIG.water.caustics };
     shader.uniforms.uGroundDetail = { value: c.detail };
+    shader.uniforms.uSurface = { value: c.surface.texture };
+    shader.uniforms.uSheen = { value: c.surface.sheen };
     shader.uniforms.uPathMap = { value: pathMap };
     shader.uniforms.uPathColor = { value: new THREE.Color(CONFIG.trails.color) };
     shader.uniforms.uPathStrength = { value: CONFIG.trails.strength };
@@ -205,8 +209,8 @@ export function createTerrain(pathTexture = null, canopies = []) {
     shader.uniforms.uWetReach = { value: c.beach.wetReach };
     shader.uniforms.uBeachTop = { value: CONFIG.water.level + c.sandHeight * 1.5 };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nattribute float aOcclusion;\nvarying float vOcclusion;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvOcclusion = aOcclusion;\nvPathUv = position.xz / uTerrainSize + 0.5;');
+      .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nattribute float aOcclusion;\nvarying float vOcclusion;\nvarying vec3 vNormalWorld;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvOcclusion = aOcclusion;\nvNormalWorld = normal;\nvPathUv = position.xz / uTerrainSize + 0.5;');
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -220,14 +224,20 @@ export function createTerrain(pathTexture = null, canopies = []) {
         varying vec2 vPathUv;
         varying vec3 vGround;
         varying float vOcclusion;
+        varying vec3 vNormalWorld;
         uniform float uTime;
         uniform float uCaustics;
         uniform float uGroundDetail;
+        uniform float uSurface;
+        uniform float uSheen;
         float groundWet = 0.0;
         ${NOISE_GLSL}
         float pathNoise(vec2 p) { return aNoise(p); }
         // Fine unevenness of the ground, used to roughen how it catches the light.
-        float groundBump(vec2 p) { return aNoise(p * 0.9) * 0.65 + aNoise(p * 2.6) * 0.35; }`,
+        float groundBump(vec2 p) { return aNoise(p * 0.9) * 0.65 + aNoise(p * 2.6) * 0.35; }
+        // Larger relief: tussocks, hummocks and rills a few metres across.
+        float groundRelief(vec2 p) { return aNoise(p * 0.18) * 0.55 + aNoise(p * 0.47 + 31.0) * 0.3 + aNoise(p * 1.3 + 17.0) * 0.15; }
+        float fbm4(vec2 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 4; i++) { v += a * aNoise(p); p = p * 2.03 + 11.0; a *= 0.5; } return v / 0.9375; }`,
       )
       .replace(
         '#include <color_fragment>',
@@ -251,6 +261,47 @@ export function createTerrain(pathTexture = null, canopies = []) {
         // Broad, soft variation so large areas are never one flat colour.
         diffuseColor.rgb *= 0.93 + 0.14 * aNoise(vGroundXZ * 0.021 + 7.0);
 
+        // ── The ground as a material, not paint ──
+        // What kind of ground is this? Judged from its colour: green = vegetated,
+        // pale = snow or sand. (Fine detail fades out with distance, where it
+        // would only shimmer.)
+        vec3 baseCol = diffuseColor.rgb;
+        float luma = dot(baseCol, vec3(0.3, 0.55, 0.15));
+        float green = clamp((baseCol.g - max(baseCol.r, baseCol.b)) / max(baseCol.g, 0.02) * 2.5, 0.0, 1.0);
+        float pale = smoothstep(0.55, 0.8, luma);
+        float viewDist = length(vViewPosition);
+        float near = 1.0 - smoothstep(25.0, 140.0, viewDist);
+        float mid = 1.0 - smoothstep(120.0, 520.0, viewDist);
+        float S = uSurface;
+
+        // Patchwork a few metres across: lusher and drier, warmer and cooler.
+        float patchA = fbm4(vGroundXZ * 0.11 + 3.0);
+        float patchB = fbm4(vGroundXZ * 0.045 - 9.0);
+        vec3 dryTint = vec3(1.1, 1.02, 0.78);
+        vec3 lushTint = vec3(0.82, 0.98, 0.88);
+        diffuseColor.rgb *= mix(vec3(1.0), mix(lushTint, dryTint, smoothstep(0.3, 0.72, patchB)), clamp(green * 0.9 * S * mid, 0.0, 1.0));
+        diffuseColor.rgb *= 1.0 + (patchA - 0.5) * 0.6 * S * mid * (1.0 - pale * 0.6);
+
+        // Clumps and hollows in grassland: darker tufts, with earth showing through in places.
+        float clumps = fbm4(vGroundXZ * 0.55 + 41.0);
+        diffuseColor.rgb *= 1.0 - smoothstep(0.45, 0.75, clumps) * 0.4 * green * S * near;
+        float bare = smoothstep(0.62, 0.8, fbm4(vGroundXZ * 0.16 + 77.0) * 0.7 + clumps * 0.3);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.34, 0.24) * (0.85 + clumps * 0.3), clamp(bare * green * 0.7 * S * mid, 0.0, 1.0));
+
+        // Grit: a fine speckle of light and dark close up, on every kind of ground.
+        float grit = aNoise(vGroundXZ * 3.7) * 0.55 + aNoise(vGroundXZ * 9.3 + 5.0) * 0.45;
+        diffuseColor.rgb *= 1.0 + (grit - 0.5) * (0.34 - pale * 0.18) * S * near;
+
+        // Steep ground: weathered rock with streaks running down the slope and darker cracks.
+        float steepness = 1.0 - normalize(vNormalWorld).y;
+        float rockiness = smoothstep(0.2, 0.5, steepness);
+        if (rockiness > 0.0) {
+          vec2 face = vec2(vGround.x + vGround.z, vGround.y * 2.4);
+          float streaks = fbm4(vec2(face.x * 0.55, face.y * 0.12));
+          float cracks = smoothstep(0.03, 0.0, abs(aNoise(face * vec2(0.4, 0.25)) - 0.5));
+          diffuseColor.rgb *= 1.0 - rockiness * S * ((streaks - 0.5) * 0.4 + cracks * 0.3 * mid);
+        }
+
         // Under water: ripples of light dance across the bottom in the shallows.
         float under = uSeaLevel - vGround.y;
         if (under > 0.0 && uCaustics > 0.0) {
@@ -265,6 +316,15 @@ export function createTerrain(pathTexture = null, canopies = []) {
       .replace(
         '#include <normal_fragment_begin>',
         `#include <normal_fragment_begin>
+        // Larger relief, out to the middle distance, so slopes aren't glassy-smooth.
+        float reliefFade = 1.0 - smoothstep(80.0, 420.0, length(vViewPosition));
+        if (reliefFade > 0.0 && uSurface > 0.0) {
+          float r0 = groundRelief(vGround.xz);
+          float rx = groundRelief(vGround.xz + vec2(0.6, 0.0));
+          float rz = groundRelief(vGround.xz + vec2(0.0, 0.6));
+          vec3 relief = vec3(r0 - rx, 0.0, r0 - rz) * 4.5 * uSurface * reliefFade * (1.0 - groundWet);
+          normal = normalize(normal + (viewMatrix * vec4(relief, 0.0)).xyz);
+        }
         float bumpFade = 1.0 - smoothstep(18.0, 90.0, length(vViewPosition));
         if (bumpFade > 0.0) {
           float b0 = groundBump(vGround.xz);
@@ -281,7 +341,11 @@ export function createTerrain(pathTexture = null, canopies = []) {
         '#include <lights_fragment_end>',
         `#include <lights_fragment_end>
         reflectedLight.indirectDiffuse *= vOcclusion;
-        reflectedLight.directDiffuse *= mix(1.0, vOcclusion, 0.3);`,
+        reflectedLight.directDiffuse *= mix(1.0, vOcclusion, 0.3);
+        // Earth, grass and rock don't shine: keep only a trace of reflected light (except where wet).
+        float shine = mix(uSheen, 1.0, groundWet);
+        reflectedLight.indirectSpecular *= shine * vOcclusion;
+        reflectedLight.directSpecular *= shine;`,
       );
   };
   // Ambient occlusion: how open to the sky each point of ground is. Hollows,

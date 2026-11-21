@@ -106,6 +106,11 @@ export const CONFIG = {
     seabedDepth: 8,
     flatShading: false, // true = faceted low-poly look
     detail: 0.5, // fine unevenness in how the ground catches light, close up (0 = perfectly smooth)
+    // How the ground reads as a material rather than smooth paint.
+    //   texture: mottling, clumps, grit, rock streaks and surface relief (0 = off, 1 = full)
+    //   sheen: how much reflected shine is kept (1 = plastic-like, 0 = fully matte)
+    //   rim: share of the sky-coloured edge light the ground gets (others get all of it)
+    surface: { texture: 1, sheen: 0.15, rim: 0.25 },
     // Soft shading in hollows and valleys, and under trees (0 = off for each).
     occlusion: { strength: 0.85, underTrees: 0.45 },
     colors: {

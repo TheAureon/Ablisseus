@@ -177,10 +177,13 @@ THREE.ShaderChunk.fog_fragment = /* glsl */ `
 // Rim light: surfaces seen edge-on pick up the colour of the sky, most of all where they face upward.
 THREE.ShaderChunk.lights_fragment_end += /* glsl */ `
 #ifdef USE_FOG
+  #ifndef ATMO_RIM_SCALE
+    #define ATMO_RIM_SCALE 1.0
+  #endif
   {
     float atmoEdge = pow(1.0 - clamp(dot(geometryNormal, geometryViewDir), 0.0, 1.0), 3.0);
     float atmoUp = dot(geometryNormal, (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz) * 0.5 + 0.5;
-    reflectedLight.indirectDiffuse += material.diffuseColor * uAtmoSky * atmoEdge * (0.35 + 0.65 * atmoUp) * uAtmoRim;
+    reflectedLight.indirectDiffuse += material.diffuseColor * uAtmoSky * atmoEdge * (0.35 + 0.65 * atmoUp) * uAtmoRim * ATMO_RIM_SCALE;
   }
 #endif`;
 
