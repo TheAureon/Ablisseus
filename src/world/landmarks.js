@@ -9,7 +9,6 @@ import { heightAt, slopeAt, findDryLand, spawnPoint, addPad } from './terrain.js
 import { biomeWeights, biomeIndex } from './biomes.js';
 import { flattenTemplate } from './scatter.js';
 import { ISLANDS, islandByName, islandIndexAt } from './islands.js';
-import { distanceToWater } from './hydrology.js';
 
 /** Decides where every landmark goes. Returns [{ asset, label, x, z, scale, rotation, radius, island }]. */
 export function placeLandmarks() {
@@ -37,7 +36,6 @@ export function placeLandmarks() {
             const weight = biomeWeights(x, z)[biome];
             if (weight < 0.6) continue;
             if (Math.hypot(x - sx, z - sz) < (lm.minSpawnDistance ?? 90)) continue;
-            if (distanceToWater(x, z) < (lm.radius ?? 8) * (lm.scale ?? 1) + 14) continue; // keep clear of rivers and lakes
             if (placed.some((p) => Math.hypot(x - p.x, z - p.z) < 130)) continue;
             const height = heightAt(x, z);
             if (height < CONFIG.water.level + (lm.prefer === 'low' ? 0.7 : 2.5)) continue;
@@ -79,7 +77,6 @@ export function placeLandmarks() {
 export function createLandmarks(templates, placed) {
   const group = new THREE.Group();
   for (const lm of placed) {
-    if (!lm.asset) continue; // (a natural sight such as a waterfall: nothing to build)
     const template = templates[lm.asset];
     if (!template) {
       console.warn(`[landmarks] Unknown asset "${lm.asset}"`);

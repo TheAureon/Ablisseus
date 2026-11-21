@@ -20,7 +20,6 @@ const makeNoise = (offset) => new SimplexNoise({ random: seededRandom(CONFIG.see
 export const heightNoise = makeNoise(0);
 export const detailNoise = makeNoise(101);
 export const biomeNoise = makeNoise(202);
-export const cliffNoise = makeNoise(303);
 
 /** General-purpose 2D noise in [-1, 1] (colour variation, prop clustering). */
 export const noise2 = (x, z) => detailNoise.noise(x, z);

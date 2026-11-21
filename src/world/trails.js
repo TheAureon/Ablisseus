@@ -17,8 +17,6 @@ import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { heightAt, slopeAt, spawnPoint, addPad, addRoadBed } from './terrain.js';
 import { ISLANDS, islandIndexAt, islandByName } from './islands.js';
-import { inlandWaterAt, distanceToWater, riverAt } from './hydrology.js';
-import { findCrossings } from './crossings.js';
 
 const MASK_SIZE = 2048;
 
@@ -110,15 +108,7 @@ export function createTrails(landmarks) {
       slopes[i] = Math.hypot(dx, dz);
     }
   }
-  // Rivers can be crossed (at a cost, and never in a gorge); lakes can't.
-  const riverNode = new Uint8Array(N * N); // 1 = river, 2 = river in a gorge
-  const lakeNode = new Uint8Array(N * N);
-  for (let i = 0; i < N * N; i++) {
-    const r = riverAt(nodeX(i), nodeZ(i), 1);
-    if (r) riverNode[i] = r.gorge > 0.5 ? 2 : 1;
-    else if (inlandWaterAt(nodeX(i), nodeZ(i)) > heights[i] - 0.05) lakeNode[i] = 1;
-  }
-  const dry = (i) => heights[i] > water + 0.7 && !lakeNode[i] && riverNode[i] !== 2;
+  const dry = (i) => heights[i] > water + 0.7;
 
   const onTrail = new Uint8Array(N * N); // cells a path already uses
   const beside = new Uint8Array(N * N); // cells right next to a path
@@ -165,13 +155,11 @@ export function createTrails(landmarks) {
           const nz = cz + dz;
           if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
           const next = nz * N + nx;
-          const fording = riverNode[next] === 1 || riverNode[current] === 1; // (river banks don't count as hillside)
-          if (!dry(next) || (slopes[next] > maxSlope && !fording)) continue; // never through water or over steep ground
+          if (!dry(next) || slopes[next] > maxSlope) continue; // never through water or over steep ground
           const dist = cell * (dx && dz ? 1.414 : 1);
           const climb = Math.abs(heights[next] - heights[current]) / dist;
-          if (climb > maxClimb && !fording) continue; // too steep to walk up: go round, in zigzags if need be
+          if (climb > maxClimb) continue; // too steep to walk up: go round, in zigzags if need be
           let step = dist * (1 + (climb * T.slopeAvoidance) ** 2 + (slopes[next] * T.slopeAvoidance * 0.6) ** 2);
-          if (riverNode[next] === 1) step *= T.riverCrossCost; // cross rivers where you must, and quickly
           if (heights[next] < water + 1.6) step *= 1.6; // keep back from the waterline
           if (onTrail[next]) step *= reuse; // walking an existing path is cheap…
           else if (beside[next]) step *= T.parallelPenalty; // …running alongside one is not: join it or keep away
@@ -412,17 +400,13 @@ export function createTrails(landmarks) {
         for (let i = 1; i < line.length - 1; i++) line[i][2] = Math.min(Math.max(line[i][2], line[i - 1][2] - rise), line[i - 1][2] + rise);
         for (let i = line.length - 2; i > 0; i--) line[i][2] = Math.min(Math.max(line[i][2], line[i + 1][2] - rise), line[i + 1][2] + rise);
       }
-      // No bed across rivers or lakes: it would dam them. Bridges and stones span those.
-      samples.push(...line.filter(([x, z]) => !riverAt(x, z, 2.5) && !(inlandWaterAt(x, z) > heightAt(x, z) - 0.2)));
+      samples.push(...line);
     }
     addRoadBed(samples, T.width * 0.5 + T.bed.shoulder, T.bed.blend);
   }
 
-  // Bridges and stepping stones where the paths meet rivers.
-  const { bridges, stones } = findCrossings(routes);
-
   // ── 3. Furniture ──────────────────────────────────────────────────────────
-  const props = { lantern: [], signpost: [], logSeat: [], tent: [], steppingStone: stones };
+  const props = { lantern: [], signpost: [], logSeat: [], tent: [] };
   const campfires = [];
   const spurs = []; // short side paths from the trail to a camp
 
@@ -449,7 +433,7 @@ export function createTrails(landmarks) {
   };
   /** True where a camp could sit: level, dry, with dry ground all round. */
   const campable = (x, z) => {
-    if (heightAt(x, z) < water + 1.8 || slopeAt(x, z) > 0.22 || distanceToWater(x, z) < 16) return false;
+    if (heightAt(x, z) < water + 1.8 || slopeAt(x, z) > 0.22) return false;
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) if (heightAt(x + Math.cos(a) * 8, z + Math.sin(a) * 8) < water + 1) return false;
     return true;
   };
@@ -554,7 +538,7 @@ export function createTrails(landmarks) {
       const p = along(route, d);
       const x = p.x - p.dz * 2.1 * side;
       const z = p.z + p.dx * 2.1 * side;
-      if (heightAt(x, z) < water + 0.8 || inlandWaterAt(x, z) > heightAt(x, z) - 0.1) continue;
+      if (heightAt(x, z) < water + 0.8) continue;
       if (props.lantern.some((l) => Math.hypot(l.x - x, l.z - z) < T.lanternSpacing * 0.55)) continue;
       if (campfires.some((c) => Math.hypot(c.x - x, c.z - z) < 14)) continue;
       if (stops.some((s) => s.lm && Math.hypot(s.lm.x - x, s.lm.z - z) < s.lm.radius + 6)) continue;
@@ -639,6 +623,5 @@ export function createTrails(landmarks) {
     campfires,
     routes,
     crossings,
-    bridges,
   };
 }

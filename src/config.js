@@ -73,12 +73,6 @@ export const CONFIG = {
     swimSprintFactor: 0.54, // with Shift, as a fraction of sprintSpeed (0.54 × 5.2 ≈ 2.8 m/s)
     strokeRate: 0.75, // strokes per second
     jumpMaxDepth: 0.7, // no jumping in water deeper than this
-    // Cliffs stop you: ground ahead that rises more than `stepUp` metres, at a
-    // slope steeper than `cliffSlope` (1 = 45°), can't be walked up.
-    stepUp: 0.45,
-    cliffSlope: 1.25,
-    cliffProbe: 0.6, // how far ahead (metres) you feel for a wall
-    dropToFall: 0.7, // stepping off a ledge taller than this means falling, not walking down
     spawn: [-500, 0], // x, z — snaps to the nearest level, dry ground (this is the middle of the home island)
     startYaw: 0.6, // initial facing, radians
   },
@@ -119,7 +113,7 @@ export const CONFIG = {
       sand: '#cdbb8e',
       rock: '#77736d', // steep slopes
       seabed: '#4b5a55',
-      gravel: '#857c6c', // riverbeds, banks and lake shores
+      shelf: '#6a6966', // the stone shelves that hold tide pools
     },
     sandHeight: 1.3, // sand below this height (above water level)
     // Beaches: the slope is eased around the waterline to make a broad strand.
@@ -148,50 +142,21 @@ export const CONFIG = {
       speed: 0.9,
       ripple: 0.5, // strength of the small glinting ripples
     },
-    // The sea slowly rises and falls.
+    // The sea slowly rises and falls. Low tide bares the rock shelves and their pools.
     tide: {
       range: 0.8, // metres between low and high water (0 = no tide)
       periodSeconds: 360, // real seconds from one high tide to the next
     },
   },
 
-  // ── Rivers, lakes and waterfalls ──────────────────────────────────────────
-  // Worked out from the land itself (see hydrology.js): rain runs downhill,
-  // basins fill into lakes, and rivers fall over cliffs as waterfalls.
-  rivers: {
+  // Tide pools: stone shelves at the waterline, each holding a few pools.
+  tidePools: {
     enabled: true,
-    cell: 6, // planning grid in metres (smaller = finer, slower to load)
-    minCatchment: 7500, // m² of land that must drain through a point for a river to start (on an island the size of the home isle; smaller islands need proportionally less)
-    minHalfWidth: 0.7, // metres, at a river's source
-    maxHalfWidth: 5,
-    widthScale: 0.011, // how fast rivers widen as they gather water
-    sink: 0.4, // how far a river's surface sits below the land around it
-    fallMin: 2.5, // a drop of at least this many metres is a waterfall
-    fallStep: 0.9, // a drop of more than this from one step to the next counts toward a waterfall
-    poolRadius: 3.5, // the plunge pool at the foot of a waterfall
-    poolDepth: 1.8,
-    lakeMinArea: 400, // m²: smaller basins stay dry
-    lakeMinDepth: 0.9,
-    gorges: 0.3, // share of river length that runs through a steep-walled gorge
-    color: '#2f6a74',
-    shallowColor: '#79bfb0',
-    // The tallest waterfalls become places paths lead to, named from this list.
-    sightMinDrop: 5, // metres
-    sightsPerIsland: 2,
-    fallNames: ['The Bridal Veil', 'Silverthread Falls', 'The Long Drop', 'Fernspray Falls', 'Thunder Steps', 'The White Ribbon', 'Echo Falls', 'Mossfall', 'The Weeping Rock', 'Kettle Falls'],
-  },
-
-  // ── Cliffs ────────────────────────────────────────────────────────────────
-  // Walls of rock you can't climb. How much of each a place gets depends on
-  // its biome's `cliffs` value. Paths find their way up through the ramps.
-  cliffs: {
-    // Inland: the land steps up in terraces. `levels` are where along a slow
-    // noise field (0..1) each wall stands; `sharpness` is how sheer (smaller =
-    // more vertical); `ramps` is the share of each wall softened into a slope.
-    escarpment: { height: 12, scale: 0.0055, levels: [0.56, 0.7], sharpness: 0.014, ramps: 0.3 },
-    // Coast: stretches of shore that end in a wall above the sea. `threshold`
-    // (0..1): higher = fewer, shorter stretches.
-    sea: { height: 12, scale: 0.006, threshold: 0.6 },
+    count: 12, // shelves around the coast of an island the size of the home isle (others get more or fewer by size)
+    spacing: 110, // at least this far apart (metres)
+    shelfRadius: 8,
+    shelfHeight: 0.1, // above mean water: bare at low tide, awash at high
+    poolsPerShelf: [2, 4],
   },
 
   // ── Biomes ────────────────────────────────────────────────────────────────
@@ -207,7 +172,6 @@ export const CONFIG = {
   //   wind/leaves/birds/crickets – how much of each sound you hear there (0 = none)
   //   footstep           – what the ground sounds like: 'grass', 'sand' or 'snow'
   //   rockColor          – colour of bare rock on steep ground (default: terrain.colors.rock)
-  //   cliffs             – how cliff-prone it is: 0 = none … 1 = full (see `cliffs` below)
   //   mapSymbol/mapDensity – how it is drawn on the map: 'pine', 'tree', 'tuft', 'dots', 'peak'; 0..1 how many
   biomes: {
     scale: 0.0032, // lower = larger regions
@@ -215,24 +179,24 @@ export const CONFIG = {
     spawn: 'meadow', // biome you start in
     spawnRadius: 90, // how much of it is guaranteed around the spawn point
     types: {
-      meadow:  { label: 'The Meadow',      ground: '#5f8f4a', groundAlt: '#7da052', heightScale: 0.8,  heightOffset: 0,   fog: 1.0,  motes: '#ffe9a8', wind: 0.8, leaves: 0.35, birds: 1.0, crickets: 1.0, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.25, cliffs: 0.45 },
-      pines:   { label: 'Pinewood',        ground: '#3f6a44', groundAlt: '#557a4a', heightScale: 1.15, heightOffset: 2,   fog: 1.35, motes: '#d8f0c0', wind: 0.7, leaves: 1.0, birds: 0.6, crickets: 0.5, footstep: 'grass', mapSymbol: 'pine', mapDensity: 0.75, cliffs: 0.9 },
-      autumn:  { label: 'Emberwood',       ground: '#9a7b3c', groundAlt: '#b08a45', heightScale: 1.0,  heightOffset: 1,   fog: 1.15, motes: '#ffb870', wind: 0.8, leaves: 0.9, birds: 0.7, crickets: 0.7, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.6, cliffs: 0.7 },
-      desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08, wind: 1.2, leaves: 0.0, birds: 0.12, crickets: 0.5, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.5, cliffs: 0.6 },
-      snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 2.3,  heightOffset: 44,  fog: 1.6,  motes: '#ffffff', bias: -0.08, rockiness: 0.5, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow', mapSymbol: 'peak', mapDensity: 0.4, cliffs: 0.5 },
-      blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd', wind: 0.6, leaves: 0.6, birds: 1.2, crickets: 0.9, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.5, cliffs: 0.35 },
+      meadow:  { label: 'The Meadow',      ground: '#5f8f4a', groundAlt: '#7da052', heightScale: 0.8,  heightOffset: 0,   fog: 1.0,  motes: '#ffe9a8', wind: 0.8, leaves: 0.35, birds: 1.0, crickets: 1.0, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.25 },
+      pines:   { label: 'Pinewood',        ground: '#3f6a44', groundAlt: '#557a4a', heightScale: 1.15, heightOffset: 2,   fog: 1.35, motes: '#d8f0c0', wind: 0.7, leaves: 1.0, birds: 0.6, crickets: 0.5, footstep: 'grass', mapSymbol: 'pine', mapDensity: 0.75 },
+      autumn:  { label: 'Emberwood',       ground: '#9a7b3c', groundAlt: '#b08a45', heightScale: 1.0,  heightOffset: 1,   fog: 1.15, motes: '#ffb870', wind: 0.8, leaves: 0.9, birds: 0.7, crickets: 0.7, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.6 },
+      desert:  { label: 'The Pale Dunes',  ground: '#d9c08a', groundAlt: '#cdaa72', heightScale: 0.45, heightOffset: 2.5, fog: 0.6,  motes: '#f5dfb0', bias: 0.08, wind: 1.2, leaves: 0.0, birds: 0.12, crickets: 0.5, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.5 },
+      snow:    { label: 'Whitereach',      ground: '#e8eef2', groundAlt: '#cfdbe4', heightScale: 2.3,  heightOffset: 44,  fog: 1.6,  motes: '#ffffff', bias: -0.08, rockiness: 0.5, wind: 1.7, leaves: 0.1, birds: 0.08, crickets: 0.0, footstep: 'snow', mapSymbol: 'peak', mapDensity: 0.4 },
+      blossom: { label: 'Blossom Hollow',  ground: '#7fae72', groundAlt: '#9cc48a', heightScale: 0.65, heightOffset: 0.5, fog: 0.9,  motes: '#ffc4dd', wind: 0.6, leaves: 0.6, birds: 1.2, crickets: 0.9, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.5 },
       // The small islands' own
-      crystal:  { label: 'Shardrock',       ground: '#3d3a48', groundAlt: '#4a4558', heightScale: 1.1,  heightOffset: 3,    fog: 0.9,  motes: '#d8b8ff', rockiness: 0.6, rockColor: '#34303e', wind: 1.1, leaves: 0.0, birds: 0.05, crickets: 0.2, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.4, cliffs: 1.0 },
-      fungal:   { label: 'The Mycel Isle',  ground: '#4c5a6e', groundAlt: '#5e4f73', heightScale: 0.6,  heightOffset: 1,    fog: 1.6,  motes: '#a8f0ff', wind: 0.4, leaves: 0.2, birds: 0.2, crickets: 1.4, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.6, cliffs: 0.3 },
-      mesa:     { label: 'The Red Mesa',    ground: '#b4643f', groundAlt: '#c27a4c', heightScale: 1.4,  heightOffset: 6,    fog: 0.7,  motes: '#ffc9a0', rockiness: 1.6, rockColor: '#9a4a30', wind: 1.3, leaves: 0.0, birds: 0.15, crickets: 0.5, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.35, cliffs: 1.3 },
-      bamboo:   { label: 'Bamboo Holm',     ground: '#6f8f45', groundAlt: '#86a352', heightScale: 0.7,  heightOffset: 1,    fog: 1.2,  motes: '#e8ffc0', wind: 0.9, leaves: 1.2, birds: 1.1, crickets: 1.0, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.8, cliffs: 0.6 },
-      birch:    { label: 'Birchwhite',      ground: '#8f8a4a', groundAlt: '#a39350', heightScale: 0.65, heightOffset: 1,    fog: 1.0,  motes: '#ffe7a0', wind: 0.8, leaves: 1.0, birds: 1.0, crickets: 0.8, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.7, cliffs: 0.5 },
-      atoll:    { label: 'Coral Key',       ground: '#efe6c8', groundAlt: '#e3d6b0', heightScale: 0.25, heightOffset: -1.5, fog: 0.6,  motes: '#fff6d8', wind: 1.0, leaves: 0.3, birds: 0.7, crickets: 0.6, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.3, cliffs: 0 },
+      crystal:  { label: 'Shardrock',       ground: '#3d3a48', groundAlt: '#4a4558', heightScale: 1.1,  heightOffset: 3,    fog: 0.9,  motes: '#d8b8ff', rockiness: 0.6, rockColor: '#34303e', wind: 1.1, leaves: 0.0, birds: 0.05, crickets: 0.2, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.4 },
+      fungal:   { label: 'The Mycel Isle',  ground: '#4c5a6e', groundAlt: '#5e4f73', heightScale: 0.6,  heightOffset: 1,    fog: 1.6,  motes: '#a8f0ff', wind: 0.4, leaves: 0.2, birds: 0.2, crickets: 1.4, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.6 },
+      mesa:     { label: 'The Red Mesa',    ground: '#b4643f', groundAlt: '#c27a4c', heightScale: 1.4,  heightOffset: 6,    fog: 0.7,  motes: '#ffc9a0', rockiness: 1.6, rockColor: '#9a4a30', wind: 1.3, leaves: 0.0, birds: 0.15, crickets: 0.5, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.35 },
+      bamboo:   { label: 'Bamboo Holm',     ground: '#6f8f45', groundAlt: '#86a352', heightScale: 0.7,  heightOffset: 1,    fog: 1.2,  motes: '#e8ffc0', wind: 0.9, leaves: 1.2, birds: 1.1, crickets: 1.0, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.8 },
+      birch:    { label: 'Birchwhite',      ground: '#8f8a4a', groundAlt: '#a39350', heightScale: 0.65, heightOffset: 1,    fog: 1.0,  motes: '#ffe7a0', wind: 0.8, leaves: 1.0, birds: 1.0, crickets: 0.8, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.7 },
+      atoll:    { label: 'Coral Key',       ground: '#efe6c8', groundAlt: '#e3d6b0', heightScale: 0.25, heightOffset: -1.5, fog: 0.6,  motes: '#fff6d8', wind: 1.0, leaves: 0.3, birds: 0.7, crickets: 0.6, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.3 },
       // The Far Isle's own
-      jungle:   { label: 'The Green Deep',  ground: '#2f6b3a', groundAlt: '#3f8046', heightScale: 1.05, heightOffset: 2,    fog: 1.7,  motes: '#c8ffb0', wind: 0.5, leaves: 1.1, birds: 1.5, crickets: 1.3, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.85, cliffs: 0.8 },
-      lavender: { label: 'Violet Downs',    ground: '#7f8f5a', groundAlt: '#8e84a8', heightScale: 0.7,  heightOffset: 3,    fog: 0.85, motes: '#e3c8ff', wind: 0.9, leaves: 0.3, birds: 0.9, crickets: 0.9, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.5, cliffs: 0.6 },
-      ash:      { label: 'The Cinderlands', ground: '#3b3736', groundAlt: '#4d4542', heightScale: 1.5,  heightOffset: 12,   fog: 1.3,  motes: '#ff9a5a', rockiness: 0.35, wind: 1.3, leaves: 0.0, birds: 0.05, crickets: 0.1, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.3, cliffs: 1.0 },
-      marsh:    { label: 'The Still Fens',  ground: '#5d7a4e', groundAlt: '#4f6b55', heightScale: 0.22, heightOffset: -3.4, fog: 1.9,  motes: '#b8ffe6', wind: 0.4, leaves: 0.5, birds: 0.8, crickets: 1.6, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.7, cliffs: 0 },
+      jungle:   { label: 'The Green Deep',  ground: '#2f6b3a', groundAlt: '#3f8046', heightScale: 1.05, heightOffset: 2,    fog: 1.7,  motes: '#c8ffb0', wind: 0.5, leaves: 1.1, birds: 1.5, crickets: 1.3, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.85 },
+      lavender: { label: 'Violet Downs',    ground: '#7f8f5a', groundAlt: '#8e84a8', heightScale: 0.7,  heightOffset: 3,    fog: 0.85, motes: '#e3c8ff', wind: 0.9, leaves: 0.3, birds: 0.9, crickets: 0.9, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.5 },
+      ash:      { label: 'The Cinderlands', ground: '#3b3736', groundAlt: '#4d4542', heightScale: 1.5,  heightOffset: 12,   fog: 1.3,  motes: '#ff9a5a', rockiness: 0.35, wind: 1.3, leaves: 0.0, birds: 0.05, crickets: 0.1, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.3 },
+      marsh:    { label: 'The Still Fens',  ground: '#5d7a4e', groundAlt: '#4f6b55', heightScale: 0.22, heightOffset: -3.4, fog: 1.9,  motes: '#b8ffe6', wind: 0.4, leaves: 0.5, birds: 0.8, crickets: 1.6, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.7 },
     },
   },
 
@@ -243,7 +207,6 @@ export const CONFIG = {
   //   cluster: { scale, threshold } — noise mask; higher threshold = sparser groves
   //   sway: wind bend amount   colorJitter: per-instance tint variation
   //   drawDistance: metres beyond which it is not drawn (big performance lever for grass)
-  //   wade: how deep in river or lake water it may stand (metres; default: none)
   scatter: [
     // The shore — along every beach, whatever the biome (heights are metres above the water)
     { asset: 'driftwood', count: 420,  height: [0.5, 1.7],  maxSlope: 0.2,  scale: [0.6, 1.5], colorJitter: 0.15, castShadow: true, drawDistance: 260 },
@@ -338,7 +301,7 @@ export const CONFIG = {
     { biome: 'ash',      asset: 'emberBush',   count: 380,   height: [2, 90],   maxSlope: 0.5,  scale: [0.6, 1.3], cluster: { scale: 0.02, threshold: 0.2 }, colorJitter: 0.2, castShadow: true, drawDistance: 320 },
 
     // The Still Fens — low, wet ground: reeds, willows, glowing caps at night
-    { biome: 'marsh',    asset: 'reed',        count: 11000, wade: 0.35, height: [-0.2, 6], maxSlope: 0.4,  scale: [0.8, 1.7], cluster: { scale: 0.035, threshold: -0.3 }, sway: 0.16, colorJitter: 0.25, drawDistance: 170 },
+    { biome: 'marsh',    asset: 'reed',        count: 11000, height: [-0.2, 6], maxSlope: 0.4,  scale: [0.8, 1.7], cluster: { scale: 0.035, threshold: -0.3 }, sway: 0.16, colorJitter: 0.25, drawDistance: 170 },
     { biome: 'marsh',    asset: 'willow',      count: 190,   height: [0.8, 10], maxSlope: 0.3,  scale: [0.9, 1.7], sway: 0.02, colorJitter: 0.2, castShadow: true },
     { biome: 'marsh',    asset: 'glowcap',     count: 900,   height: [0.4, 8],  maxSlope: 0.4,  scale: [0.7, 1.6], cluster: { scale: 0.05, threshold: 0.15 }, colorJitter: 0.1, drawDistance: 120 },
     { biome: 'marsh',    asset: 'grassDark',   count: 5000,  height: [0.6, 10], maxSlope: 0.4,  scale: [0.9, 1.8], cluster: { scale: 0.03, threshold: -0.2 }, sway: 0.2, colorJitter: 0.3, drawDistance: 150 },
@@ -418,9 +381,6 @@ export const CONFIG = {
     bed: { enabled: true, shoulder: 1, blend: 5, smoothing: 12, maxGrade: 0.3 }, // metres of level verge / of easing back into the slope; steepest rise along the path
     slopeAvoidance: 7, // higher = paths wind further to stay on gentle ground
     parallelPenalty: 3, // discourages a new path from running alongside an existing one instead of joining it
-    riverCrossCost: 1.2, // how much paths avoid crossing rivers (they cross where they must)
-    fordMaxWidth: 3.0, // rivers narrower than this (metres)…
-    fordMaxDepth: 0.8, // …and shallower than this get stepping stones; others get a bridge
     mergeWithin: 70, // a side path shorter than this that just rejoins the main one is removed (metres)
     reuseDiscount: 0.35, // lower = routes merge into shared trunk paths more eagerly
     loopReuseDiscount: 0.6, // same, for the landmark-to-landmark loop routes
@@ -524,8 +484,6 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     leavesVolume: 0.022,
     waterVolume: 0.1,
     fireVolume: 0.14,
-    streamVolume: 0.06,
-    fallsVolume: 0.12,
     birdVolume: 0.035,
     cricketVolume: 0.007,
     owlVolume: 0.03,

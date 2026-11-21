@@ -51,10 +51,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Change any number: speeds, island size/shape, colours, prop counts, sky colours, fog, day length, bloom | `src/config.js` |
 | Add, move or resize an island; choose its biomes and which island you swim to it from | `islands` in `src/config.js` |
 | Add, remove or restyle a biome; choose what grows in it | `biomes` and `scatter` in `src/config.js` |
-| Change waves, tide, beaches | `water` and `terrain.beach` in `src/config.js` |
-| Change rivers, lakes and waterfalls (how many, how wide, how tall a fall must be) | `rivers` in `src/config.js` |
-| Change cliffs (how tall, how sheer, how many ramps, which biomes) | `cliffs` in `src/config.js`, and each biome's `cliffs` value |
-| Change when paths get a bridge or stepping stones | `trails.fordMaxWidth` / `fordMaxDepth` in `src/config.js` |
+| Change waves, tide, beaches, tide pools | `water`, `tidePools` and `terrain.beach` in `src/config.js` |
 | Change landmarks, footpaths, lanterns, camps | `landmarks`, `trails`, `campfire` in `src/config.js` |
 | Change sound volumes, or how lively each biome sounds | `audio` and each biome's `wind/leaves/birds/crickets` in `src/config.js` |
 | Trade looks for frame rate | `render.quality` (`low` / `medium` / `high` / `ultra`) in `src/config.js`, or *quality* in the `G` panel |
@@ -102,8 +99,7 @@ src/
     terrain.js     island height function, terrain mesh, beaches, the sea (waves, foam, tide)
     islands.js     the islands that make up the world
     biomes.js      regions with their own ground, terrain shape and mood
-    hydrology.js   rivers, lakes, waterfalls and pools, worked out from the land; what you can stand on
-    crossings.js   bridges and stepping stones where paths meet rivers
+    shore.js       rock shelves and tide pools along the coast
     landmarks.js   one large natural feature per biome, placed automatically
     trails.js      footpaths between camp and landmarks, plus lanterns, signposts, camps
     campfire.js    flickering fires, embers and firelight

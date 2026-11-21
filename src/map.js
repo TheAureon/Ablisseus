@@ -9,7 +9,6 @@ import { CONFIG } from './config.js';
 import { heightAt } from './world/terrain.js';
 import { biomeWeights, dominant, biomeLabel, BIOME_NAMES } from './world/biomes.js';
 import { ISLANDS, islandIndexAt, worldBounds } from './world/islands.js';
-import { water as hydro, inlandWaterAt } from './world/hydrology.js';
 
 const INK = '#4a3a28';
 const PAPER = [233, 221, 194];
@@ -55,14 +54,12 @@ export function createMap({ landmarks, trails }) {
     const heights = new Float32Array(S * SZ);
     const biome = new Uint8Array(S * SZ);
     const strength = new Float32Array(S * SZ);
-    const lakeAt = new Float32Array(S * SZ); // inland water level, or -Infinity
     for (let j = 0; j < SZ; j++) {
       for (let i = 0; i < S; i++) {
         const x = bounds.cx + (i / S - 0.5) * extent;
         const z = bounds.cz + (j / SZ - 0.5) * extentZ;
         const k = j * S + i;
         heights[k] = heightAt(x, z);
-        lakeAt[k] = inlandWaterAt(x, z);
         const w = biomeWeights(x, z);
         biome[k] = dominant(w);
         strength[k] = w[biome[k]];
@@ -80,13 +77,7 @@ export function createMap({ landmarks, trails }) {
         let r;
         let g;
         let b;
-        const wet = lakeAt[k] > h; // a lake, pool or river
-        if (h > water && wet) {
-          // Lakes: a deeper wash of blue than the sea.
-          r = 160;
-          g = 192;
-          b = 198;
-        } else if (h > water) {
+        if (h > water) {
           // Land: the biome's colour washed onto the paper, shaded as if lit from the north-west.
           const c = ground[biome[k]];
           const left = heights[k - 1] ?? h;
@@ -96,12 +87,6 @@ export function createMap({ landmarks, trails }) {
           r = (PAPER[0] * (1 - wash) + c[0] * wash) * (1 + shade);
           g = (PAPER[1] * (1 - wash) + c[1] * wash) * (1 + shade);
           b = (PAPER[2] * (1 - wash) + c[2] * wash) * (1 + shade);
-          // Cliffs: heavy ink where the ground drops steeply.
-          if (Math.max(Math.abs(h - left), Math.abs(h - up)) / step > 1.1) {
-            r *= 0.5;
-            g *= 0.45;
-            b *= 0.4;
-          }
           // Contour lines
           const band = Math.floor(h / M.contourEvery);
           if (band !== Math.floor(left / M.contourEvery) || band !== Math.floor(up / M.contourEvery)) {
@@ -125,8 +110,7 @@ export function createMap({ landmarks, trails }) {
         // Coastline in ink
         const right = heights[k + 1] ?? h;
         const down = heights[k + S] ?? h;
-        const dry = (kk, hh) => hh > water && !(lakeAt[kk] > hh);
-        if (dry(k, h) !== dry(k + 1, right) || dry(k, h) !== dry(k + S, down)) {
+        if ((h > water) !== (right > water) || (h > water) !== (down > water)) {
           r = 74;
           g = 58;
           b = 40;
@@ -203,37 +187,6 @@ export function createMap({ landmarks, trails }) {
           ctx.stroke();
           ctx.globalAlpha = 1;
         }
-      }
-    }
-
-    // ── Rivers: blue lines, widening downstream; waterfalls as little ink bars ──
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#3f7d98';
-    for (const river of hydro.rivers) {
-      const pts = river.points;
-      for (let i = 0; i < pts.length - 1; i++) {
-        ctx.lineWidth = Math.max(W / 650, ((pts[i].hw * 2) / extent) * W * 2.2);
-        ctx.beginPath();
-        ctx.moveTo(toMapX(pts[i].x), toMapZ(pts[i].z));
-        ctx.lineTo(toMapX(pts[i + 1].x), toMapZ(pts[i + 1].z));
-        ctx.stroke();
-      }
-    }
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = W / 900;
-    for (const f of hydro.falls) {
-      const dx = f.x1 - f.x0;
-      const dz = f.z1 - f.z0;
-      const len = Math.hypot(dx, dz) || 1;
-      const mx = toMapX((f.x0 + f.x1) / 2);
-      const mz = toMapZ((f.z0 + f.z1) / 2);
-      const u = W / 260;
-      for (const o of [-0.5, 0.5]) {
-        ctx.beginPath();
-        ctx.moveTo(mx + (dx / len) * u * o - (-dz / len) * u, mz + (dz / len) * u * o - (dx / len) * u);
-        ctx.lineTo(mx + (dx / len) * u * o + (-dz / len) * u, mz + (dz / len) * u * o + (dx / len) * u);
-        ctx.stroke();
       }
     }
 
@@ -351,7 +304,7 @@ export function createMap({ landmarks, trails }) {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      if (lm.label) label(lm.label, cx, cy + u * (lm.waterfall ? -2.1 : 2.1), SIZE / 82, { italic: true }); // (waterfalls are named above, landmarks below)
+      if (lm.label) label(lm.label, cx, cy + u * 2.1, SIZE / 82, { italic: true });
     }
 
     // ── 6. Furniture of the map itself: border, title, compass, scale ──

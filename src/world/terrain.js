@@ -4,10 +4,9 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { applyAtmosphere, NOISE_GLSL } from '../atmosphere.js';
-import { heightNoise, cliffNoise, noise2, smoothstep } from './noise.js';
+import { heightNoise, noise2, smoothstep } from './noise.js';
 import { biomeWeights, blend, blendColor } from './biomes.js';
 import { landAt } from './islands.js';
-import { riverAt, inlandWaterAt } from './hydrology.js';
 
 // The sea floor away from every island (the seabed depth, passed through the same beach shaping as everything else).
 const openSeaFloor = (() => {
@@ -16,8 +15,8 @@ const openSeaFloor = (() => {
   return CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
 })();
 
-/** The shape of the land before rivers cut into it: hills, biomes, cliffs, beaches. */
-export function baseHeightAt(x, z) {
+/** The natural, unmodified ground height. */
+function naturalHeightAt(x, z) {
   const c = CONFIG.terrain;
   const land = landAt(x, z);
   if (land <= 0) return openSeaFloor; // nothing to work out far from any island
@@ -36,65 +35,13 @@ export function baseHeightAt(x, z) {
   // Each biome reshapes the land: flatter, hillier, higher or lower.
   const weights = biomeWeights(x, z);
   const height = c.baseHeight + blend(weights, 'heightOffset', 0) + n * c.amplitude * blend(weights, 'heightScale', 1);
-  let raw = land * height - (1 - land) * c.seabedDepth;
-
-  // ── Cliffs ──
-  const K = CONFIG.cliffs;
-  const cliffy = blend(weights, 'cliffs', 0); // how cliff-prone the biomes here are
-  let coastal = 0;
-  if (cliffy > 0) {
-    // Escarpments: the land steps up in terraces wherever a slow noise field
-    // crosses certain levels, giving near-vertical walls between flat tiers.
-    // A second field softens stretches of each wall into ramps you can climb.
-    const E = K.escarpment;
-    if (E.height > 0) {
-      const field = cliffNoise.noise(x * E.scale, z * E.scale) * 0.5 + 0.5;
-      const ramp = smoothstep(1 - E.ramps, 1 - E.ramps + 0.15, cliffNoise.noise(x * 0.018 + 50, z * 0.018 - 20) * 0.5 + 0.5);
-      const w = E.sharpness + (0.1 - E.sharpness) * ramp;
-      let steps = 0;
-      for (const level of E.levels) steps += smoothstep(level - w, level + w, field);
-      raw += steps * E.height * cliffy * smoothstep(0.35, 0.7, land); // inland only
-    }
-    // Sea cliffs: along some stretches of coast the land ends in a wall that
-    // drops straight into the sea, instead of a beach.
-    const C = K.sea;
-    if (C.height > 0) {
-      coastal = smoothstep(C.threshold, C.threshold + 0.1, cliffNoise.noise(x * C.scale + 311, z * C.scale - 97) * 0.5 + 0.5) * Math.min(1, cliffy * 1.6);
-      coastal *= 1 - smoothstep(0.5, 0.8, land); // the outer coast, not inland ponds
-      if (coastal > 0 && raw > -3) {
-        // Ground just above the waterline leaps up to the cliff top (and the
-        // land behind is never lower than it); the water at its foot is deep.
-        const shaped = raw >= -0.3 ? Math.max(raw, C.height * smoothstep(-0.3, 1.2, raw)) : Math.min(raw, -4 * smoothstep(-0.3, -1.5, raw));
-        raw += (shaped - raw) * coastal;
-      }
-    }
-  }
+  const raw = land * height - (1 - land) * c.seabedDepth;
 
   // Beaches: ease the slope either side of the waterline so the shore is a
-  // broad, gentle strand instead of a narrow bank (but not under sea cliffs).
+  // broad, gentle strand instead of a narrow bank.
   const above = raw - CONFIG.water.level;
   const b = c.beach;
-  const flatten = b.flatten + (1 - b.flatten) * coastal;
-  return CONFIG.water.level + above * (flatten + (1 - flatten) * smoothstep(0, b.height, Math.abs(above)));
-}
-
-// Rivers carve their channels into the land. The water system (hydrology.js)
-// works out where they run from the base shape above, then hands in a function
-// that cuts them in; every height after that includes the channels.
-let carver = null;
-export function setCarver(fn) {
-  carver = fn;
-}
-// …and a way to ask how far the nearest river or lake is (for choosing where you start).
-let waterDistance = () => Infinity;
-export function setWaterDistance(fn) {
-  waterDistance = fn;
-}
-
-/** The natural ground height: the base shape with river channels cut into it. */
-function naturalHeightAt(x, z) {
-  const h = baseHeightAt(x, z);
-  return carver ? carver(x, z, h) : h;
+  return CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
 }
 
 // Pads: discs of levelled ground under camps and landmarks, so nothing sits
@@ -104,6 +51,15 @@ const pads = [];
 /** Levels the ground around (x, z). Must be called before the terrain mesh is built. */
 export function addPad(x, z, radius, blendWidth = 10, height = naturalHeightAt(x, z)) {
   pads.push({ x, z, radius, blendWidth, height });
+}
+
+// Rock shelves: flat slabs of stone at the waterline that hold the tide pools.
+const shelves = [];
+
+/** A level stone shelf at the given height. Call before the terrain mesh is built. */
+export function addRockShelf(x, z, radius, height) {
+  shelves.push({ x, z, radius });
+  addPad(x, z, radius, radius * 0.9, height);
 }
 
 // Road beds: the ground under a path is cut level across its width, like a
@@ -222,11 +178,10 @@ export function createTerrain(pathTexture = null, canopies = []) {
         out.lerp(col.seabed, 1 - smoothstep(water - 3, water - 0.3, y));
         const rockSlope = c.rockSlope / blend(weights, 'rockiness', 1); // some biomes (snow) cling to steeper ground
         out.lerp(blendColor(weights, 'rockColor', rockTint, c.colors.rock), smoothstep(rockSlope * 0.7, rockSlope * 1.3, steep));
-        // Riverbeds and banks are gravel; lake shores are bare a little way up from the water.
-        const river = riverAt(x, z, 1.8);
-        if (river) out.lerp(col.gravel, 0.7);
-        const lake = inlandWaterAt(x, z);
-        if (lake > -Infinity && !river) out.lerp(col.gravel, (1 - smoothstep(lake + 0.1, lake + 0.9, y)) * 0.75);
+        for (const shelf of shelves) {
+          const d = Math.hypot(x - shelf.x, z - shelf.z);
+          if (d < shelf.radius * 1.6) out.lerp(col.shelf, 1 - smoothstep(shelf.radius * 0.9, shelf.radius * 1.6, d));
+        }
       }
       colors[k * 3] = out.r;
       colors[k * 3 + 1] = out.g;
@@ -250,8 +205,8 @@ export function createTerrain(pathTexture = null, canopies = []) {
     shader.uniforms.uWetReach = { value: c.beach.wetReach };
     shader.uniforms.uBeachTop = { value: CONFIG.water.level + c.sandHeight * 1.5 };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nattribute float aOcclusion;\nvarying float vOcclusion;\nvarying float vSteep;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvOcclusion = aOcclusion;\nvSteep = 1.0 - normal.y;\nvPathUv = position.xz / uTerrainSize + 0.5;');
+      .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nattribute float aOcclusion;\nvarying float vOcclusion;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvOcclusion = aOcclusion;\nvPathUv = position.xz / uTerrainSize + 0.5;');
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -265,7 +220,6 @@ export function createTerrain(pathTexture = null, canopies = []) {
         varying vec2 vPathUv;
         varying vec3 vGround;
         varying float vOcclusion;
-        varying float vSteep;
         uniform float uTime;
         uniform float uCaustics;
         uniform float uGroundDetail;
@@ -296,14 +250,6 @@ export function createTerrain(pathTexture = null, canopies = []) {
 
         // Broad, soft variation so large areas are never one flat colour.
         diffuseColor.rgb *= 0.93 + 0.14 * aNoise(vGroundXZ * 0.021 + 7.0);
-
-        // Cliff faces: layered rock, with darker seams between the beds.
-        float cliffFace = smoothstep(0.32, 0.55, vSteep);
-        if (cliffFace > 0.0) {
-          float beds = sin(vGround.y * 1.9 + aNoise(vGroundXZ * 0.12) * 5.0) * 0.5 + 0.5;
-          float seams = smoothstep(0.82, 0.97, beds);
-          diffuseColor.rgb *= 1.0 - cliffFace * (0.06 + 0.1 * beds + 0.22 * seams);
-        }
 
         // Under water: ripples of light dance across the bottom in the shallows.
         float under = uSeaLevel - vGround.y;
@@ -699,7 +645,7 @@ export function spawnPoint() {
     for (let a = 0; a < Math.PI * 2; a += r ? Math.min(0.5, 6 / r) : 7) {
       const x = sx + Math.cos(a) * r;
       const z = sz + Math.sin(a) * r;
-      if (heightAt(x, z) < water + 2.5 || slopeAt(x, z) > 0.12 || waterDistance(x, z) < 14) continue;
+      if (heightAt(x, z) < water + 2.5 || slopeAt(x, z) > 0.12) continue;
       let open = true;
       for (let b = 0; b < Math.PI * 2 && open; b += Math.PI / 4) {
         const h = heightAt(x + Math.cos(b) * 16, z + Math.sin(b) * 16);

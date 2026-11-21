@@ -4,10 +4,6 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { heightAt, spawnPoint, terrainUniforms, swellAt } from './world/terrain.js';
-import { inlandWaterAt, walkHeightAt } from './world/hydrology.js';
-
-/** The height you stand at: the ground, or a bridge or stepping stone above it. */
-const standAt = (x, z) => walkHeightAt(x, z, heightAt(x, z));
 import { atmosphere } from './atmosphere.js';
 
 const KEYS = {
@@ -23,7 +19,7 @@ export function createPlayer(camera, canvas) {
   const c = CONFIG.player;
   const [sx, sz] = spawnPoint();
 
-  const position = new THREE.Vector3(sx, standAt(sx, sz), sz);
+  const position = new THREE.Vector3(sx, heightAt(sx, sz), sz);
   const velocity = new THREE.Vector3();
   const target = new THREE.Vector3();
   const euler = new THREE.Euler(0, c.startYaw, 0, 'YXZ');
@@ -154,12 +150,10 @@ export function createPlayer(camera, canvas) {
     // ── Water ──
     // Wading slows you more the deeper you go. Once the water is deep enough
     // to float in, your feet leave the bottom and you swim.
-    const ground = standAt(position.x, position.z);
+    const ground = heightAt(position.x, position.z);
     const seaLevel = terrainUniforms.uSeaLevel.value; // includes the tide
-    const inland = inlandWaterAt(position.x, position.z); // a river, lake or pool, if any
-    const depth = Math.max(0, Math.max(seaLevel, inland) - ground); // metres of water here
-    // The sea's swell lifts you; rivers and lakes are calm.
-    const surface = inland > seaLevel ? inland : seaLevel + swellAt(position.x, position.z, atmosphere.uTime.value) * 0.7;
+    const depth = Math.max(0, seaLevel - ground); // metres of water here
+    const surface = seaLevel + swellAt(position.x, position.z, atmosphere.uTime.value) * 0.7; // you ride the swell
     const floatY = surface - c.swimFloatDepth; // where your feet hang when floating
     const swimming = !airborne && floatY > ground;
     const swimSpeed = c.walkSpeed * c.swimFactor; // (read each frame, so the G panel's speed sliders apply)
@@ -176,7 +170,7 @@ export function createPlayer(camera, canvas) {
 
     // Slopes: slower uphill, a touch quicker downhill (not while afloat).
     if (!swimming && target.lengthSq() > 0.001) {
-      const ahead = standAt(position.x + target.x * 0.6, position.z + target.z * 0.6);
+      const ahead = heightAt(position.x + target.x * 0.6, position.z + target.z * 0.6);
       const grade = (ahead - ground) / 0.6;
       pace *= THREE.MathUtils.clamp(1 - grade * c.slopeEffect, 0.45, 1.15);
     }
@@ -197,29 +191,11 @@ export function createPlayer(camera, canvas) {
     if (Math.abs(position.x) > edge) velocity.x -= Math.sign(position.x) * (Math.abs(position.x) - edge) * 0.08 * dt * 60 * 0.05;
     if (Math.abs(position.z) > edge) velocity.z -= Math.sign(position.z) * (Math.abs(position.z) - edge) * 0.08 * dt * 60 * 0.05;
 
-    // Cliffs: you can't walk (or swim) up a wall. Each direction is checked on
-    // its own, so you slide along a cliff face rather than stick to it.
-    const wall = (dx, dz) => {
-      if (Math.abs(dx) + Math.abs(dz) < 1e-6) return false;
-      const len = Math.hypot(dx, dz);
-      const reach = c.cliffProbe;
-      const ahead = standAt(position.x + (dx / len) * reach, position.z + (dz / len) * reach);
-      const rise = ahead - Math.max(position.y, ground);
-      return rise > c.stepUp && rise / reach > c.cliffSlope;
-    };
-    if (wall(velocity.x, 0)) velocity.x = 0;
-    if (wall(0, velocity.z)) velocity.z = 0;
-
     position.x += velocity.x * dt;
     position.z += velocity.z * dt;
 
     // ── Vertical: follow the ground, or fly through a jump ──
-    const floor = Math.max(standAt(position.x, position.z), floatY); // solid ground, or the depth you float at
-    // Walked off an edge: fall.
-    if (!airborne && windup <= 0 && position.y - floor > c.dropToFall) {
-      airborne = true;
-      verticalSpeed = 0;
-    }
+    const floor = Math.max(heightAt(position.x, position.z), floatY); // solid ground, or the depth you float at
     const jumpHeld = held('jump') || touchJump;
     let crouch = 0;
 
@@ -305,7 +281,7 @@ export function createPlayer(camera, canvas) {
     const crane = Math.max(0, -euler.x) * CONFIG.body.lookDownLean;
     camera.position.x -= Math.sin(euler.y) * crane;
     camera.position.z -= Math.cos(euler.y) * crane;
-    camera.position.y = Math.max(camera.position.y, standAt(position.x, position.z) + 0.3); // never sink into the ground
+    camera.position.y = Math.max(camera.position.y, heightAt(position.x, position.z) + 0.3); // never sink into the ground
     if (depth > 0.5) camera.position.y = Math.max(camera.position.y, surface + 0.12); // keep your eyes above the water
     camera.quaternion.setFromEuler(euler);
 

@@ -13,11 +13,10 @@ import { CONFIG, QUALITY_PRESETS } from './config.js';
 import { atmosphere, GradeShader, GodRaysPass, HillShadowBaker } from './atmosphere.js'; // (first: it upgrades the fog for every material made after)
 import { loadAssets } from './assets.js';
 import { createTerrain, createWater, createHeightTexture, terrainUniforms, waterNearness, heightAt } from './world/terrain.js';
+import { placeTidePools } from './world/shore.js';
 import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOME_NAMES } from './world/biomes.js';
 import { createScatter, createPlacedProps, updateScatter, canopies } from './world/scatter.js';
 import { placeLandmarks, createLandmarks } from './world/landmarks.js';
-import { buildHydrology, createInlandWater, waterfallSights, nearestRiver, water as hydro } from './world/hydrology.js';
-import { createBridges } from './world/crossings.js';
 import { createTrails } from './world/trails.js';
 import { createCampfires } from './world/campfire.js';
 import { createHorizon } from './world/horizon.js';
@@ -83,17 +82,15 @@ const templates = await loadAssets();
 
 // Landmarks choose their spots first, trails are planned between them, and
 // only then is everything else grown around the paths.
-buildHydrology(); // (first: rivers shape the land everything else is placed on)
-const landmarks = [...placeLandmarks(), ...waterfallSights()]; // (the tallest waterfalls are destinations too)
+const tidePools = placeTidePools(); // (these reshape the shore, so they go first)
+const landmarks = placeLandmarks();
 const trails = createTrails(landmarks);
 const heightTexture = createHeightTexture();
 const hillShadows = new HillShadowBaker(renderer, heightTexture);
 const water = createWater(heightTexture);
-const inlandWater = createInlandWater(heightTexture);
-scene.add(inlandWater.object);
 const scatter = createScatter(templates, trails); // (before the terrain, which shades the ground under the trees)
 scene.add(createTerrain(trails.texture, canopies), water, scatter, createLandmarks(templates, landmarks));
-scene.add(createBridges(trails.bridges));
+if (tidePools.length) scene.add(createPlacedProps(templates.rockPool, 'rockPool', tidePools, { castShadow: false, drawDistance: 220 }));
 for (const [asset, placements] of Object.entries(trails.props)) {
   if (placements.length) scene.add(createPlacedProps(templates[asset], asset, placements, { drawDistance: 380 }));
 }
@@ -238,13 +235,12 @@ if (CONFIG.debug.gui) {
 }
 
 // Handy for poking at things from the browser console.
-window.TERRA = { hydro: () => import('./world/hydrology.js'), CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt, atmosphere, hillShadows, title };
+window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt, atmosphere, hillShadows, title };
 
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
 const waterColor = new THREE.Color();
 const sunOnScreen = new THREE.Vector3();
-const sprayLight = new THREE.Color();
 
 // ── Adaptive resolution ─────────────────────────────────────────────────────
 // Once a second, compare the frame rate with the target. Too slow: render at a
@@ -315,7 +311,7 @@ function announceLandmark(position) {
 
 // Surroundings that are a little costly to work out are refreshed a few times a second.
 const woodedBiomes = ['pines', 'autumn', 'jungle', 'marsh', 'fungal', 'bamboo', 'birch'].map(biomeIndex).filter((i) => i >= 0);
-const surroundings = { water: 0, stream: 0, falls: 0, timer: 0 };
+const surroundings = { water: 0, timer: 0 };
 const frameWeights = new Float32Array(BIOME_NAMES.length); // this frame's biome mix, kept separate from the shared scratch array
 
 renderer.setAnimationLoop(() => {
@@ -352,13 +348,6 @@ renderer.setAnimationLoop(() => {
   if (surroundings.timer <= 0) {
     surroundings.timer = 0.25;
     surroundings.water = waterNearness(player.position.x, player.position.z);
-    const river = nearestRiver(player.position.x, player.position.z);
-    surroundings.stream = (0.35 + 0.65 * river.size) * (1 - THREE.MathUtils.smoothstep(river.distance, 3, 45));
-    surroundings.falls = 0;
-    for (const f of hydro.falls) {
-      const d = Math.hypot(f.x1 - player.position.x, f.z1 - player.position.z);
-      surroundings.falls = Math.max(surroundings.falls, Math.min(1, (f.s0 - f.s1) / 10) * (1 - THREE.MathUtils.smoothstep(d, 8, 120)));
-    }
   }
   updateSoundscape(dt, {
     wind: blend(weights, 'wind', 1) + THREE.MathUtils.smoothstep(altitude, 25, 80) * CONFIG.audio.altitudeWind,
@@ -369,8 +358,6 @@ renderer.setAnimationLoop(() => {
     night,
     water: surroundings.water,
     fire: 1 - THREE.MathUtils.smoothstep(fireDistance, 2, 28),
-    stream: surroundings.stream,
-    falls: surroundings.falls,
     awe: Math.max(THREE.MathUtils.smoothstep(altitude, 22, 70), currentLandmark ? 0.8 : 0),
   });
 
@@ -410,7 +397,6 @@ renderer.setAnimationLoop(() => {
   const seaLevel = CONFIG.water.level + (tide.range > 0 ? Math.sin((elapsed / tide.periodSeconds) * Math.PI * 2 + live.tidePhase) * tide.range * 0.5 : 0);
   water.position.set(Math.round(camera.position.x / 4) * 4, seaLevel, Math.round(camera.position.z / 4) * 4);
   water.userData.uniforms.uTime.value = elapsed;
-  inlandWater.update(elapsed, sprayLight.copy(sky.state.ambientSky).multiplyScalar(sky.state.ambientIntensity * 0.6).add(sky.state.lightColor.clone().multiplyScalar(Math.min(sky.state.lightIntensity, 3) * 0.12)));
   water.userData.uniforms.uWaveHeight.value = CONFIG.water.waves.height;
   terrainUniforms.uSeaLevel.value = seaLevel;
 
