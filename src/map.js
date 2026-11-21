@@ -26,6 +26,9 @@ export function createMap({ landmarks, trails }) {
   const W = SIZE;
   const H = Math.round((SIZE * extentZ) / extent / 2) * 2;
   document.getElementById('map-sheet').style.aspectRatio = `${W} / ${H}`;
+  // Fit the sheet to whichever runs out first, the screen's width or its height, keeping the map's shape
+  // (sizing by width alone squashed it on screens that aren't tall enough).
+  document.getElementById('map-sheet').style.width = `min(94vw, ${((90 * W) / H).toFixed(3)}vh)`;
   const toMapX = (x) => ((x - bounds.cx) / extent + 0.5) * W;
   const toMapZ = (z) => ((z - bounds.cz) / extentZ + 0.5) * H;
   let painted = false;
