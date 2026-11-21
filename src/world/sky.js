@@ -132,12 +132,17 @@ const skyFragment = /* glsl */ `
     float band = 0.0;
     if (uNight > 0.01) {
       vec3 axis = normalize(vec3(0.45, 0.35, 0.82));
-      band = pow(1.0 - abs(dot(sky, axis)), 6.0);
-      float core = pow(max(dot(sky, normalize(vec3(0.75, 0.2, -0.6))), 0.0), 3.0);   // brighter toward the galaxy's centre
-      float dust = fbm(sky.xz * 6.0 + sky.y * 4.0);
-      float lanes = smoothstep(0.42, 0.68, fbm(sky.xz * 11.0 - sky.y * 7.0 + 3.0));   // dark rifts of dust
-      vec3 glow = mix(vec3(0.45, 0.52, 0.85), vec3(0.85, 0.75, 0.62), core) * dust * dust * (1.0 + core * 1.5) * (1.0 - lanes * 0.7);
-      col += glow * band * uNight * uMilkyWay * smoothstep(0.0, 0.25, dir.y) * 0.6;
+      // Measure position along and across the band, so its texture follows it
+      // instead of smearing in blocks across the sky.
+      vec3 b1 = normalize(cross(axis, vec3(0.0, 1.0, 0.0)));
+      vec3 b2 = cross(axis, b1);
+      float across = dot(sky, axis);
+      float along = atan(dot(sky, b2), dot(sky, b1));
+      band = exp(-pow(across / 0.2, 2.0));
+      float clumps = fbm(vec2(along * 3.0, across * 9.0) + 5.0);
+      float rift = exp(-pow((across - 0.03 * sin(along * 3.0)) / 0.045, 2.0)) * smoothstep(0.35, 0.7, fbm(vec2(along * 6.0, across * 20.0)));
+      vec3 glow = vec3(0.55, 0.6, 0.78) * (0.35 + clumps * 0.9) * (1.0 - rift * 0.55);
+      col += glow * band * uNight * uMilkyWay * smoothstep(0.0, 0.25, dir.y) * 0.22;
 
       float above = smoothstep(-0.02, 0.18, dir.y);
       // (A grid of n cells around has about 12·n² cells, so these fractions give ~9000 faint stars and ~700 bright ones.)
@@ -207,37 +212,56 @@ const skyFragment = /* glsl */ `
     if (uCirrus > 0.01 && dir.y > 0.0) {
       vec2 cp = dir.xz / (dir.y + 0.32);
       vec2 streak = mat2(0.94, 0.34, -0.34, 0.94) * cp;
-      float wisp = fbm(vec2(streak.x * 0.9, streak.y * 6.5) + vec2(uTime * 0.006, 0.0));
-      wisp *= fbm(cp * 1.3 + 9.0 + uTime * 0.003);
-      float amount = smoothstep(0.3, 0.52, wisp) * uCirrus * smoothstep(0.02, 0.25, dir.y);
+      // Only gently stretched: strongly stretched streaks all converge on the
+      // horizon in perspective and read as rays of light.
+      float wisp = fbm(vec2(streak.x * 1.3, streak.y * 2.8) + vec2(uTime * 0.006, 0.0));
+      wisp *= fbm(cp * 1.1 + 9.0 + uTime * 0.003);
+      float amount = smoothstep(0.32, 0.55, wisp) * uCirrus * smoothstep(0.05, 0.35, dir.y) * (1.0 - 0.85 * uNight);
       vec3 cirrus = mix(uCloudLit * 1.15, uSunColor * 1.5 + 0.1, lowSun * day * 0.75);
       cirrus += uSunColor * uSunStrength * pow(s, 6.0) * 0.8;
       col = mix(col, cirrus, amount * 0.42);
       cloudShadowOnStars = max(cloudShadowOnStars, amount);
     }
 
-    // ── Cumulus: soft heaped clouds, lit on the side facing the light ──
+    // ── Cumulus: clouds with depth ──
+    // Each cloud is a column between a flat base and a higher, lumpy top. The
+    // same pattern is sampled where the line of sight crosses the base and
+    // where it crosses the top, so looking up you see a dark, flat underside,
+    // and toward the horizon its bright sides and sunlit tops rise above it.
     if (uCloudCover > 0.01 && dir.y > 0.0) {
-      vec2 uv = dir.xz / (dir.y + 0.1) * 0.85 + vec2(uTime * 0.008, uTime * 0.003);
-      float shape = fbm(uv) * 0.72 + fbm(uv * 2.6 + 40.0) * 0.28;
+      vec2 onPlane = dir.xz / (dir.y + 0.1);
+      vec2 drift = vec2(uTime * 0.008, uTime * 0.003);
       float threshold = mix(0.72, 0.3, uCloudCover);   // more cover, lower threshold, more cloud
-      float density = smoothstep(threshold, threshold + 0.16, shape);
-      if (density > 0.001) {
-        // Look a little toward the light: thinner there means this is the bright, sunward edge.
-        vec2 toLight = normalize(uLightDir.xz + 1e-4) * 0.06;
-        float towardLight = smoothstep(threshold, threshold + 0.16, fbm3(uv + toLight) * 0.72 + fbm3(uv * 2.6 + 40.0 + toLight * 2.6) * 0.28);
-        float lit = clamp(0.55 + (density - towardLight) * 3.0, 0.0, 1.0);
-        lit *= mix(1.0, 0.5, smoothstep(0.35, 1.0, density));   // thick cores and bellies are darker
-        vec3 cloud = mix(uCloudShade * 0.82, uCloudLit * 1.08, lit);
-        // Sunset: the sun shines up under the clouds, gilding them from below.
-        cloud += uSunColor * (0.9 + 0.6 * day) * lowSun * smoothstep(-0.18, 0.02, uSunDir.y) * pow(sunSide, 1.5) * (0.35 + 0.65 * lit) * 0.8;
+      vec2 uvBase = onPlane * 0.85 + drift;
+      vec2 uvTop = onPlane * 0.85 * 1.45 + drift;   // a higher plane: the same place appears further along
+      float shapeBase = fbm(uvBase) * 0.72 + fbm(uvBase * 2.6 + 40.0) * 0.28;
+      float shapeTop = fbm(uvTop) * 0.72 + fbm(uvTop * 2.6 + 40.0) * 0.28;
+      float base = smoothstep(threshold, threshold + 0.1, shapeBase);            // the underside, sharp-edged
+      float body = smoothstep(threshold - 0.04, threshold + 0.22, shapeTop);     // sides and tops, softer and billowing
+      float alpha = max(base, body * 0.95) * smoothstep(0.0, 0.12, dir.y);
+      if (alpha > 0.002) {
+        // Light: thinner toward the sun or moon means this is the lit side.
+        vec2 toLight = normalize(uLightDir.xz + 1e-4) * 0.07;
+        float lightward = smoothstep(threshold - 0.04, threshold + 0.22, fbm3(uvTop + toLight) * 0.72 + fbm3(uvTop * 2.6 + 40.0 + toLight * 2.6) * 0.28);
+        float litSide = clamp(0.5 + (body - lightward) * 3.2, 0.0, 1.0);
+        float lightUp = smoothstep(-0.1, 0.4, uLightDir.y);   // a high light reaches the tops; a low one only the sides
+        vec3 sides = mix(uCloudShade, uCloudLit * 1.15, litSide * (0.55 + 0.45 * lightUp));
+        // The underside: darkest in the middle of a big cloud, paler toward its edges.
+        float inner = smoothstep(threshold, threshold + 0.3, shapeBase);
+        vec3 under = mix(uCloudLit * 0.92, uCloudShade * 0.72, inner);
+        // Low sun shines up under the clouds, gilding the bases from below.
+        under += uSunColor * (0.9 + 0.6 * day) * lowSun * smoothstep(-0.18, 0.02, uSunDir.y) * pow(sunSide, 1.5) * (1.0 - inner * 0.5) * 0.7;
+        sides += uSunColor * (0.9 + 0.6 * day) * lowSun * smoothstep(-0.18, 0.02, uSunDir.y) * pow(sunSide, 1.5) * litSide * 0.5;
+        // Where the base hides the body you see the underside; elsewhere, the sides.
+        vec3 cloud = mix(sides, under, base);
         // Silver lining: thin edges glow when the light is behind them.
         float lightBehind = pow(max(dot(dir, uLightDir), 0.0), 7.0);
-        cloud += uSunColor * mix(1.0, 0.35, uNight) * (uSunStrength + uMoonStrength * 0.4) * lightBehind * (1.0 - density) * 1.6;
+        cloud += uSunColor * mix(1.0, 0.35, uNight) * (uSunStrength + uMoonStrength * 0.4) * lightBehind * (1.0 - max(base, body)) * 1.6;
+        // At night they are grey shapes against the stars, not glowing.
+        cloud *= mix(1.0, 0.55, uNight);
         // Far clouds fade into the haze along the horizon.
         cloud = mix(cloud, col, exp(-h * 9.0) * 0.6);
-        float alpha = density * smoothstep(0.0, 0.14, dir.y) * 0.92;
-        col = mix(col, cloud, alpha);
+        col = mix(col, cloud, alpha * 0.94);
         cloudShadowOnStars = max(cloudShadowOnStars, alpha);
       }
     }
