@@ -134,6 +134,15 @@ export const CONFIG = {
       shelf: '#6a6966', // the stone shelves that hold tide pools
     },
     sandHeight: 1.3, // sand below this height (above water level)
+    // Headlands: spurs of high ground placed by hand that run out into the sea
+    // and end in a sheer cliff. `from` is on the land, `to` out at sea ([x, z]);
+    // the top falls from height[0] to height[1] metres and narrows from
+    // width[0] to width[1] (half-widths); `drop` is how many metres the cliff
+    // face takes to reach the sea floor (smaller = sheerer).
+    headlands: [
+      // The snow mountain's south flank, running out from under the Frost Crown.
+      { from: [-455, 205], to: [-448, 300], width: [62, 40], height: [50, 20], drop: 5, roughness: 2.5 },
+    ],
     // Beaches: the slope is eased around the waterline to make a broad strand.
     beach: {
       flatten: 0.3, // slope right at the waterline, as a fraction of the natural slope (1 = no change)

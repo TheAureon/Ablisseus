@@ -41,7 +41,47 @@ function naturalHeightAt(x, z) {
   // broad, gentle strand instead of a narrow bank.
   const above = raw - CONFIG.water.level;
   const b = c.beach;
-  return CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
+  const shaped = CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
+  return applyHeadlands(x, z, shaped);
+}
+
+/**
+ * Headlands (CONFIG.terrain.headlands): hand-placed spurs of high ground that
+ * run out from the land into the sea and end in a sheer drop to deep water.
+ * Each is shaped along a line from `from` (on the land) to `to` (out at sea):
+ * its top falls from height[0] to height[1], its width narrows from width[0]
+ * to width[1], and past its ragged edge the ground drops to the sea floor over
+ * just `drop` metres. Applied after the beaches, so the foot of the cliff is
+ * a wall, not a sandy shelf.
+ */
+function applyHeadlands(x, z, h) {
+  for (const hd of CONFIG.terrain.headlands ?? []) {
+    const [ax, az] = hd.from;
+    const [bx, bz] = hd.to;
+    const ex = bx - ax;
+    const ez = bz - az;
+    const len = Math.hypot(ex, ez);
+    const along = ((x - ax) * ex + (z - az) * ez) / len; // metres from `from`, along the spur
+    const reachOut = Math.max(hd.width[0], hd.width[1]) + hd.drop + 4;
+    if (along < -reachOut || along > len + reachOut) continue;
+    const t = Math.min(1, Math.max(0, along / len));
+    const cx = ax + ex * t;
+    const cz = az + ez * t;
+    const d = Math.hypot(x - cx, z - cz); // from the spur's spine (rounded at both ends)
+    if (d > reachOut) continue;
+    // A ragged outline, so the cliff line wanders like a real coast.
+    const angle = Math.atan2(z - cz, x - cx);
+    const ragged = 1 + 0.16 * noise2(Math.cos(angle) * 1.7 + along * 0.025 + 3, Math.sin(angle) * 1.7 + 11);
+    const width = (hd.width[0] + (hd.width[1] - hd.width[0]) * t) * ragged;
+    const top = hd.height[0] + (hd.height[1] - hd.height[0]) * t ** 0.85;
+    // On top: rounded across, and rough.
+    const surface = top * (1 - 0.3 * (d / width) ** 2) + noise2(x * 0.05, z * 0.05) * hd.roughness;
+    const floor = -CONFIG.terrain.seabedDepth;
+    const edge = d - width;
+    const shape = edge < 0 ? surface : surface + (floor - surface) * smoothstep(0, hd.drop, edge);
+    h = Math.max(h, shape);
+  }
+  return h;
 }
 
 // Pads: discs of levelled ground under camps and landmarks, so nothing sits
