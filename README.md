@@ -41,6 +41,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Jump | `Space` |
 | Swim | walk into deep water; `Shift` to swim faster |
 | Map | `M` |
+| Coordinates | `C` |
 | Tweak panel | `G` (press `Esc` first to free the mouse) |
 | Touch | drag left half of screen to walk, right half to look, tap right half to jump |
 

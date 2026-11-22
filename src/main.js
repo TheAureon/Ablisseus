@@ -172,6 +172,28 @@ function updateTitle(dt, elapsed) {
 }
 let titleFog = CONFIG.title.fog;
 
+// ── Coordinates readout ─────────────────────────────────────────────────────
+// x is east, z is south (north is up on the map), y is height above the sea.
+const coordsText = document.getElementById('coords');
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+let coordsTimer = 0;
+function updateCoords(dt) {
+  if (!coordsText.classList.contains('show') || (coordsTimer -= dt) > 0) return;
+  coordsTimer = 0.1; // ten times a second is plenty
+  const { x, y, z } = player.position;
+  const yaw = player.state.yaw;
+  // Facing: the way you look, measured clockwise from north.
+  const bearing = ((Math.atan2(-Math.sin(yaw), Math.cos(yaw)) * 180) / Math.PI + 360) % 360;
+  coordsText.textContent = `X ${Math.round(x)}   Y ${Math.round(y)}   Z ${Math.round(z)}\n${COMPASS[Math.round(bearing / 45) % 8]} ${Math.round(bearing)}°`;
+}
+addEventListener('keydown', (e) => {
+  if (e.code === 'KeyC' && !e.repeat && overlay.classList.contains('hidden')) {
+    CONFIG.ui.coordinates = !CONFIG.ui.coordinates;
+    coordsText.classList.toggle('show', CONFIG.ui.coordinates);
+    coordsTimer = 0;
+  }
+});
+
 // ── Start / pause ───────────────────────────────────────────────────────────
 overlayStatus.textContent = isTouch ? 'tap to wander' : 'click to wander';
 overlay.classList.remove('loading'); // the world is ready: let the view show through
@@ -181,6 +203,7 @@ function begin() {
   overlay.classList.add('hidden');
   title.leaving = true;
   if (CONFIG.ui.crosshair) crosshair.style.opacity = CONFIG.ui.crosshairOpacity;
+  coordsText.classList.toggle('show', CONFIG.ui.coordinates);
   startAudio();
   if (isTouch) player.setEnabled(true);
   else canvas.requestPointerLock();
@@ -327,6 +350,7 @@ renderer.setAnimationLoop(() => {
   updateTitle(dt, elapsed);
   body.update(dt, player.state);
   map.update(player.position, player.state.yaw);
+  updateCoords(dt);
   updateScatter(camera.position);
   // The biome you are standing in tints the air: fog thickness and mote colour.
   const weights = biomeWeights(player.position.x, player.position.z, frameWeights);

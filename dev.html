@@ -27,6 +27,14 @@
       #overlay p { margin: 0; opacity: 0.75; letter-spacing: 0.15em; font-size: 0.9rem; }
       #overlay .keys { opacity: 0.45; font-size: 0.75rem; }
 
+      /* Coordinates readout (C): your position in metres and the way you face. */
+      #coords {
+        position: fixed; left: 0.9rem; bottom: 0.8rem; font-size: 0.78rem; letter-spacing: 0.08em;
+        font-variant-numeric: tabular-nums; color: #f4efe6; opacity: 0; pointer-events: none;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.7); transition: opacity 0.6s; white-space: pre;
+      }
+      #coords.show { opacity: 0.75; }
+
       #crosshair {
         position: fixed; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%;
         transform: translate(-50%, -50%); background: #fff; opacity: 0;
@@ -78,9 +86,10 @@
     <div id="overlay" class="loading">
       <h1>TERRA ABLISSEUS</h1>
       <p id="overlay-status">loading…</p>
-      <p class="keys">WASD / arrows to walk · mouse to look · shift to hurry · space to jump · M for map · G for tweak panel</p>
+      <p class="keys">WASD / arrows to walk · mouse to look · shift to hurry · space to jump · M for map · C for coordinates · G for tweak panel</p>
     </div>
     <div id="crosshair"></div>
+    <div id="coords"></div>
     <div id="biome"></div>
     <div id="map"><div id="map-sheet"><canvas id="map-canvas"></canvas><div id="map-marker"></div></div></div>
     <button id="map-button">MAP</button>

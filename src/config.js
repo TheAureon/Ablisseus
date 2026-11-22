@@ -504,6 +504,7 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     crosshair: true, // small dot in the centre of the screen
     crosshairSize: 4, // pixels
     crosshairOpacity: 0.55,
+    coordinates: true, // show your position and heading in the corner (toggle in game with C)
     biomeLabel: true, // show a region's or landmark's name for a moment as you arrive
     // The map, opened with M. It is drawn from the world itself, so it follows any change to the island.
     map: {
