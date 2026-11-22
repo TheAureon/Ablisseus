@@ -27,6 +27,19 @@ export const CONFIG = {
     { name: 'coral',  label: 'Coral Key',      x: 780,  z: 770,  radius: 100, biomes: ['atoll'],    from: 'far' },
   ],
 
+  // ── Spectator ─────────────────────────────────────────────────────────────
+  // Press F to fly freely (and F again to land). Space/E rise, Q sinks,
+  // Shift is faster, the scroll wheel changes the speed.
+  spectator: {
+    enabled: true,
+    speed: 14, // metres / second
+    fastMultiplier: 4, // with Shift
+    acceleration: 4,
+    deceleration: 5,
+    minHeight: 0.6, // never closer than this to the ground
+    maxHeight: 900,
+  },
+
   // ── Player ────────────────────────────────────────────────────────────────
   player: {
     eyeHeight: 1.7,

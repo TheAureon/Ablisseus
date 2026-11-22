@@ -34,7 +34,7 @@ export function createBody(template) {
 
   /** @param state the player's motion state (see player.js) */
   function update(dt, state) {
-    body.visible = c.enabled;
+    body.visible = c.enabled && !state.flying; // (no body in spectator mode)
     // Swimming: the body tips forward to lie in the water. It pivots at the
     // shoulders, so the head stays where your eyes are and the legs trail out
     // behind (pivoting at the feet would swing the torso up in front of your face).

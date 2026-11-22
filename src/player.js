@@ -13,6 +13,10 @@ const KEYS = {
   right: ['KeyD', 'ArrowRight'],
   sprint: ['ShiftLeft', 'ShiftRight'],
   jump: ['Space'],
+  // Spectator flying
+  fly: ['KeyF'],
+  up: ['Space', 'KeyE'],
+  down: ['KeyQ'],
 };
 
 export function createPlayer(camera, canvas) {
@@ -37,7 +41,8 @@ export function createPlayer(camera, canvas) {
   // ── Keyboard & mouse ──
   addEventListener('keydown', (e) => {
     down.add(e.code);
-    if (enabled && !e.repeat && KEYS.jump.includes(e.code)) {
+    if (enabled && !e.repeat && KEYS.fly.includes(e.code) && CONFIG.spectator.enabled) setFlying(!flying);
+    if (enabled && !e.repeat && KEYS.jump.includes(e.code) && !flying) {
       jumpBuffer = 0.15; // remembered briefly so a press just before landing still counts
       e.preventDefault();
     }
@@ -128,6 +133,11 @@ export function createPlayer(camera, canvas) {
     const lookEase = c.lookSmoothing > 0 ? ease(1 / c.lookSmoothing, dt) : 1;
     euler.y += (lookTarget.yaw - euler.y) * lookEase;
     euler.x += (lookTarget.pitch - euler.x) * lookEase;
+
+    if (flying) {
+      flyStep(dt);
+      return;
+    }
 
     // ── Desired velocity ──
     let x = touchMove.x;
@@ -288,8 +298,76 @@ export function createPlayer(camera, canvas) {
     Object.assign(state, { yaw: euler.y, stride, moveAmount, hurry, speed, bob: bob + dip, air, swim, stroke });
   }
 
+  // ── Spectator: fly freely, straight where you look ──
+  // Forward/back follow your gaze (look up to climb); Space or E rises, Q
+  // sinks; Shift is faster; the scroll wheel sets the speed. You can't go
+  // below the ground. Press F again to drop to the ground where you are.
+  let flying = false;
+  let flySpeedScale = 1;
+  const flyVelocity = new THREE.Vector3();
+  const flyWish = new THREE.Vector3();
+  const gaze = new THREE.Vector3();
+  const side = new THREE.Vector3();
+
+  function setFlying(on) {
+    flying = on;
+    flyVelocity.set(0, 0, 0);
+    velocity.set(0, 0, 0);
+    if (on) {
+      airborne = false;
+      swim = 0;
+      euler.z = 0;
+    } else {
+      // Back on your feet on the ground below (or in the water there).
+      airborne = false;
+      verticalSpeed = 0;
+      position.y = heightAt(position.x, position.z);
+    }
+    state.flying = on;
+  }
+
+  addEventListener(
+    'wheel',
+    (e) => {
+      if (!flying) return;
+      flySpeedScale = THREE.MathUtils.clamp(flySpeedScale * (e.deltaY < 0 ? 1.15 : 1 / 1.15), 0.1, 20);
+    },
+    { passive: true },
+  );
+
+  function flyStep(dt) {
+    const S = CONFIG.spectator;
+    let fx = touchMove.x;
+    let fz = touchMove.y;
+    let fy = 0;
+    if (enabled) {
+      fx += (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
+      fz += (held('back') ? 1 : 0) - (held('forward') ? 1 : 0);
+      fy += (held('up') ? 1 : 0) - (held('down') ? 1 : 0);
+    }
+    gaze.set(0, 0, -1).applyEuler(euler);
+    side.set(1, 0, 0).applyAxisAngle(THREE.Object3D.DEFAULT_UP, euler.y);
+    flyWish.set(0, 0, 0).addScaledVector(gaze, -fz).addScaledVector(side, fx);
+    flyWish.y += fy;
+    if (flyWish.lengthSq() > 1) flyWish.normalize();
+    flyWish.multiplyScalar(S.speed * flySpeedScale * (held('sprint') ? S.fastMultiplier : 1));
+    flyVelocity.lerp(flyWish, ease(flyWish.lengthSq() > flyVelocity.lengthSq() ? S.acceleration : S.deceleration, dt));
+
+    position.addScaledVector(flyVelocity, dt);
+    const half = CONFIG.terrain.size / 2;
+    position.x = THREE.MathUtils.clamp(position.x, -half, half);
+    position.z = THREE.MathUtils.clamp(position.z, -half, half);
+    position.y = THREE.MathUtils.clamp(position.y, heightAt(position.x, position.z) + S.minHeight - c.eyeHeight, S.maxHeight);
+
+    euler.z = 0;
+    fovOffset += (0 - fovOffset) * ease(3, dt);
+    camera.position.set(position.x, position.y + c.eyeHeight, position.z);
+    camera.quaternion.setFromEuler(euler);
+    Object.assign(state, { yaw: euler.y, stride, moveAmount: 0, hurry: 0, speed: flyVelocity.length(), bob: 0, air: 0, swim: 0, stroke });
+  }
+
   /** Motion state for anything that follows the player (the body, for now). */
-  const state = { position, yaw: c.startYaw, stride: 0, moveAmount: 0, hurry: 0, speed: 0, bob: 0, air: 0, swim: 0, stroke: 0 };
+  const state = { position, yaw: c.startYaw, stride: 0, moveAmount: 0, hurry: 0, speed: 0, bob: 0, air: 0, swim: 0, stroke: 0, flying: false };
 
   let onStep = null;
 
@@ -304,6 +382,10 @@ export function createPlayer(camera, canvas) {
     set onStep(fn) {
       onStep = fn;
     },
+    get flying() {
+      return flying;
+    },
+    setFlying,
     setEnabled: (v) => {
       enabled = v;
       if (!v) down.clear();

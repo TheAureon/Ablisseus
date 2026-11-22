@@ -40,6 +40,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Hurry | `Shift` |
 | Jump | `Space` |
 | Swim | walk into deep water; `Shift` to swim faster |
+| Fly (spectator) | `F` to toggle; `Space`/`E` up, `Q` down, `Shift` faster, scroll for speed |
 | Map | `M` |
 | Coordinates | `C` |
 | Tweak panel | `G` (press `Esc` first to free the mouse) |
