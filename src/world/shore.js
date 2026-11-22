@@ -39,6 +39,9 @@ export function placeTidePools() {
     for (const [x, z] of coast) {
       if (found >= wanted) break;
       if (sites.some((s) => Math.hypot(s[0] - x, s[1] - z) < P.spacing)) continue;
+      // No tide-pool shelves at the foot of a cliff coast or a headland: a shelf would level the cliff.
+      if ((CONFIG.terrain.cliffCoasts ?? []).some((cc) => Math.hypot(cc.x - x, cc.z - z) < cc.radius + 15)) continue;
+      if ((CONFIG.terrain.headlands ?? []).some((hd) => Math.hypot(hd.to[0] - x, hd.to[1] - z) < Math.max(...hd.width) + 25)) continue;
       sites.push([x, z]);
       found++;
     }

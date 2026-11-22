@@ -42,7 +42,38 @@ function naturalHeightAt(x, z) {
   const above = raw - CONFIG.water.level;
   const b = c.beach;
   const shaped = CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
-  return applyHeadlands(x, z, shaped);
+  return applyHeadlands(x, z, applyCliffCoasts(x, z, raw, shaped));
+}
+
+/**
+ * Cliff coasts (CONFIG.terrain.cliffCoasts): hand-placed stretches of shore
+ * where the land meets the sea as a cliff instead of a beach. Inside each
+ * circle, ground just above the water leaps up to the cliff's height (and the
+ * land behind is never lower than that), while the water at its foot is made
+ * deep. It follows the island's own coastline, so the cliff line is natural.
+ * Worked from the height before beach shaping, so the face is steep; fades
+ * back to the ordinary shore toward the circle's rim.
+ * @param raw the height before beach shaping   @param shaped the height after it
+ */
+function applyCliffCoasts(x, z, raw, shaped) {
+  const water = CONFIG.water.level;
+  for (const cc of CONFIG.terrain.cliffCoasts ?? []) {
+    const d = Math.hypot(x - cc.x, z - cc.z);
+    if (d >= cc.radius) continue;
+    const weight = 1 - smoothstep(cc.radius * 0.6, cc.radius, d);
+    const above = raw - water;
+    let cliff;
+    if (above >= -cc.foot) {
+      // From the foot of the face to the top over a metre or two of height:
+      // since the land rises gently here, that is a near-vertical wall.
+      cliff = water + Math.max(above, cc.height * smoothstep(-cc.foot, cc.foot * 0.5 + 1.2, above));
+      cliff += noise2(x * 0.06, z * 0.06) * cc.roughness * smoothstep(0, cc.height * 0.5, cliff - water);
+    } else {
+      cliff = Math.min(shaped, water - cc.depth); // deep water right at the foot
+    }
+    shaped += (cliff - shaped) * weight;
+  }
+  return shaped;
 }
 
 /**

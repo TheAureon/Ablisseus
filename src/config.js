@@ -143,6 +143,17 @@ export const CONFIG = {
       // The snow mountain's south flank, running out from under the Frost Crown.
       { from: [-455, 205], to: [-448, 300], width: [62, 40], height: [50, 20], drop: 5, roughness: 2.5 },
     ],
+    // Cliff coasts: stretches of shore placed by hand where the land meets the
+    // sea as a cliff instead of a beach. Centre [x, z] and radius (the effect
+    // fades out over the outer 40%); height of the cliff top above the water;
+    // depth of the water at its foot; foot: how far below the waterline the
+    // face starts (bigger = the face reaches further out).
+    cliffCoasts: [
+      // West of the Giant's Tooth: the Pinewood hill ends in a cliff.
+      { x: -752, z: 118, radius: 70, height: 11, depth: 4, foot: 1.2, roughness: 1.5 },
+      // The snow mountain on the west coast, above the old tide-pool shelf.
+      { x: -712, z: 268, radius: 95, height: 15, depth: 5, foot: 1.2, roughness: 2 },
+    ],
     // Beaches: the slope is eased around the waterline to make a broad strand.
     beach: {
       flatten: 0.3, // slope right at the waterline, as a fraction of the natural slope (1 = no change)
