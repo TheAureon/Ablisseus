@@ -155,6 +155,10 @@ export const CONFIG = {
       { x: -712, z: 268, radius: 95, height: 15, depth: 5, foot: 1.2, roughness: 2 },
       // The boulder-strewn cone on the west coast, south of the Giant's Tooth.
       { x: -812, z: 52, radius: 95, height: 13, depth: 5, foot: 1.2, roughness: 2 },
+      // The mountain rising out of the lake on the north side of the Home Isle.
+      { x: -472, z: -186, radius: 60, height: 14, depth: 4, foot: 1.2, roughness: 2 },
+      // The beach east of the first headland, below the snow mountain.
+      { x: -372, z: 250, radius: 70, height: 16, depth: 5, foot: 1.2, roughness: 2 },
     ],
     // Beaches: the slope is eased around the waterline to make a broad strand.
     beach: {
