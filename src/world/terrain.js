@@ -45,6 +45,13 @@ function naturalHeightAt(x, z) {
   return applyHeadlands(x, z, applyCliffCoasts(x, z, raw, shaped));
 }
 
+/** Blocky ups and downs for the top edge of a cliff, as if chunks had broken away (metres). */
+function crownBreak(x, z) {
+  const J = CONFIG.terrain.cliffJag;
+  const n = noise2(x * 0.11 + 31, z * 0.11 + 7);
+  return (Math.round(n * 2.2) / 2.2) * J.crown; // stepped, not smooth
+}
+
 /**
  * Cliff coasts (CONFIG.terrain.cliffCoasts): hand-placed stretches of shore
  * where the land meets the sea as a cliff instead of a beach. Inside each
@@ -61,13 +68,18 @@ function applyCliffCoasts(x, z, raw, shaped) {
     const d = Math.hypot(x - cc.x, z - cc.z);
     if (d >= cc.radius) continue;
     const weight = 1 - smoothstep(cc.radius * 0.6, cc.radius, d);
-    const above = raw - water;
+    // Jag the shoreline before deciding where the face stands: inlets and
+    // buttresses a few metres across, and smaller notches within them.
+    const J = CONFIG.terrain.cliffJag;
+    const jag = (noise2(x * 0.075 + 17, z * 0.075 - 5) * 1.0 + noise2(x * 0.19 - 3, z * 0.19 + 9) * 0.55 + noise2(x * 0.43, z * 0.43) * 0.25) * J.outline;
+    const above = raw - water + jag;
     let cliff;
     if (above >= -cc.foot) {
       // From the foot of the face to the top over a metre or two of height:
       // since the land rises gently here, that is a near-vertical wall.
       cliff = water + Math.max(above, cc.height * smoothstep(-cc.foot, cc.foot * 0.5 + 1.2, above));
       cliff += noise2(x * 0.06, z * 0.06) * cc.roughness * smoothstep(0, cc.height * 0.5, cliff - water);
+      cliff += crownBreak(x, z) * smoothstep(cc.height * 0.6, cc.height, cliff - water); // a broken, blocky top edge
     } else {
       cliff = Math.min(shaped, water - cc.depth); // deep water right at the foot
     }
@@ -102,11 +114,15 @@ function applyHeadlands(x, z, h) {
     if (d > reachOut) continue;
     // A ragged outline, so the cliff line wanders like a real coast.
     const angle = Math.atan2(z - cz, x - cx);
-    const ragged = 1 + 0.16 * noise2(Math.cos(angle) * 1.7 + along * 0.025 + 3, Math.sin(angle) * 1.7 + 11);
+    const J = CONFIG.terrain.cliffJag;
+    const ragged =
+      1 +
+      0.16 * noise2(Math.cos(angle) * 1.7 + along * 0.025 + 3, Math.sin(angle) * 1.7 + 11) +
+      J.headland * (0.09 * noise2(x * 0.09 + 4, z * 0.09 - 7) + 0.05 * noise2(x * 0.23 - 2, z * 0.23 + 3));
     const width = (hd.width[0] + (hd.width[1] - hd.width[0]) * t) * ragged;
     const top = hd.height[0] + (hd.height[1] - hd.height[0]) * t ** 0.85;
     // On top: rounded across, and rough.
-    const surface = top * (1 - 0.3 * (d / width) ** 2) + noise2(x * 0.05, z * 0.05) * hd.roughness;
+    const surface = top * (1 - 0.3 * (d / width) ** 2) + noise2(x * 0.05, z * 0.05) * hd.roughness + crownBreak(x, z) * smoothstep(-6, 0, d - width);
     const floor = -CONFIG.terrain.seabedDepth;
     const edge = d - width;
     const shape = edge < 0 ? surface : surface + (floor - surface) * smoothstep(0, hd.drop, edge);
@@ -272,6 +288,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
     shader.uniforms.uGroundDetail = { value: c.detail };
     shader.uniforms.uSurface = { value: c.surface.texture };
     shader.uniforms.uSheen = { value: c.surface.sheen };
+    shader.uniforms.uRockFacets = { value: CONFIG.terrain.cliffJag.facets };
     shader.uniforms.uPathMap = { value: pathMap };
     shader.uniforms.uPathColor = { value: new THREE.Color(CONFIG.trails.color) };
     shader.uniforms.uPathStrength = { value: CONFIG.trails.strength };
@@ -301,6 +318,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
         uniform float uGroundDetail;
         uniform float uSurface;
         uniform float uSheen;
+        uniform float uRockFacets;
         float groundWet = 0.0;
         ${NOISE_GLSL}
         float pathNoise(vec2 p) { return aNoise(p); }
@@ -389,6 +407,19 @@ export function createTerrain(pathTexture = null, canopies = []) {
       .replace(
         '#include <normal_fragment_begin>',
         `#include <normal_fragment_begin>
+        // Cliffs and other steep rock: light it as broken, angular facets (from
+        // the triangles themselves) with vertical ribs and fissures, not as a
+        // smooth slope.
+        float rockFace = smoothstep(0.28, 0.55, steepness) * uRockFacets;
+        if (rockFace > 0.0) {
+          vec3 facet = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
+          normal = normalize(mix(normal, facet, rockFace * 0.85));
+          vec2 face = vec2(vGround.x * 0.7 + vGround.z * 0.7, vGround.y);
+          float r0 = aNoise(vec2(face.x * 0.55, face.y * 0.06)) * 0.7 + aNoise(vec2(face.x * 1.6, face.y * 0.15) + 9.0) * 0.3;
+          float r1 = aNoise(vec2((face.x + 0.3) * 0.55, face.y * 0.06)) * 0.7 + aNoise(vec2((face.x + 0.3) * 1.6, face.y * 0.15) + 9.0) * 0.3;
+          vec3 across = normalize(vec3(0.7, 0.0, -0.7));
+          normal = normalize(normal + (viewMatrix * vec4(across * (r1 - r0) / 0.3 * 1.4 * rockFace, 0.0)).xyz);
+        }
         // Larger relief, out to the middle distance, so slopes aren't glassy-smooth.
         float reliefFade = 1.0 - smoothstep(80.0, 420.0, length(vViewPosition));
         if (reliefFade > 0.0 && uSurface > 0.0) {

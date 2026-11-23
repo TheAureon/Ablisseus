@@ -143,6 +143,13 @@ export const CONFIG = {
       // The snow mountain's south flank, running out from under the Frost Crown.
       { from: [-455, 205], to: [-448, 300], width: [62, 40], height: [50, 20], drop: 5, roughness: 2.5 },
     ],
+    // How rough the cliffs are (0 = smooth for each).
+    //   outline: how far the cliff line wanders in and out (metres of height it shifts by)
+    //   headland: how ragged headland edges are
+    //   crown: size of the broken blocks along the top edge (metres)
+    //   facets: how much steep rock is lit as angular, fractured facets
+    cliffJag: { outline: 1.4, headland: 1, crown: 1.6, facets: 1 },
+
     // Cliff coasts: stretches of shore placed by hand where the land meets the
     // sea as a cliff instead of a beach. Centre [x, z] and radius (the effect
     // fades out over the outer 40%); height of the cliff top above the water;
