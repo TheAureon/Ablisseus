@@ -142,6 +142,8 @@ export const CONFIG = {
     headlands: [
       // The snow mountain's south flank, running out from under the Frost Crown.
       { from: [-455, 205], to: [-448, 300], width: [62, 40], height: [50, 20], drop: 5, roughness: 2.5 },
+      // The Far Isle's east cape, which the Long River's sea tunnel runs through.
+      { from: [752, -112], to: [808, -112], width: [34, 28], height: [38, 32], drop: 14, roughness: 2.5 },
     ],
     // How rough the cliffs are (0 = smooth for each).
     //   outline: how far the cliff line wanders in and out (metres of height it shifts by)
@@ -227,8 +229,22 @@ export const CONFIG = {
       sink: 0.6,
       valley: 1.6,
       plain: 4,
-      spring: 6, // radius of the pool it rises from (0 for none)
+      spring: 0, // radius of a pool it rises from (0 for none)
+      maxLevel: 18, // highest its water stands (here, level with the sea tunnel it joins at the source)
       meander: 7,
+    },
+    {
+      // Its other end: from the same source east through the headland in a
+      // tunnel, spilling out of the sea cliff as a waterfall into the ocean.
+      label: 'The Sea Tunnel',
+      branchOf: 0, // starts at the level of river 0's source
+      tunnel: true, // a slot, roofed over wherever the land is high above it
+      points: [[700, -112], [745, -113], [790, -111], [850, -112]],
+      halfWidth: [2, 2.4],
+      depth: 1.1,
+      sink: 0.6,
+      plain: 0,
+      meander: 2,
     },
   ],
   riverLook: { color: '#2f6a74', shallowColor: '#79bfb0' },

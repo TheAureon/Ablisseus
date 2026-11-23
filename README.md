@@ -54,7 +54,7 @@ This serves `dev.html` (the source page) with live reload while you tweak.
 | Add, move or resize an island; choose its biomes and which island you swim to it from | `islands` in `src/config.js` |
 | Add, remove or restyle a biome; choose what grows in it | `biomes` and `scatter` in `src/config.js` |
 | Change waves, tide, beaches, tide pools | `water`, `tidePools` and `terrain.beach` in `src/config.js` |
-| Move, add or reshape a river (its course, width, depth, valley, spring) | `rivers` and `riverLook` in `src/config.js` |
+| Move, add or reshape a river (its course, width, depth, valley, spring, tunnels) | `rivers` and `riverLook` in `src/config.js` |
 | Change landmarks, footpaths, lanterns, camps | `landmarks`, `trails`, `campfire` in `src/config.js` |
 | Change sound volumes, or how lively each biome sounds | `audio` and each biome's `wind/leaves/birds/crickets` in `src/config.js` |
 | Trade looks for frame rate | `render.quality` (`low` / `medium` / `high` / `ultra`) in `src/config.js`, or *quality* in the `G` panel |
@@ -103,7 +103,7 @@ src/
     islands.js     the islands that make up the world
     biomes.js      regions with their own ground, terrain shape and mood
     shore.js       rock shelves and tide pools along the coast
-    river.js       hand-placed rivers: the valley they cut, flowing water, footbridges
+    river.js       hand-placed rivers: the valley they cut, flowing water, tunnels, footbridges
     landmarks.js   one large natural feature per biome, placed automatically
     trails.js      footpaths between camp and landmarks, plus lanterns, signposts, camps
     campfire.js    flickering fires, embers and firelight

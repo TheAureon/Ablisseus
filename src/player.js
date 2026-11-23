@@ -5,10 +5,11 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { heightAt, spawnPoint, terrainUniforms, swellAt } from './world/terrain.js';
 import { atmosphere } from './atmosphere.js';
-import { walkHeightAt, riverWaterAt, riverAt } from './world/river.js';
+import { walkHeightAt, riverWaterAt, riverAt, tunnelBlocks } from './world/river.js';
 
-/** Where your feet rest: the ground, or a bridge deck. */
-const standAt = (x, z) => walkHeightAt(x, z, heightAt(x, z));
+/** Where your feet rest: the ground, a bridge deck, or the hill over a tunnel (judged from where your feet were). */
+let feet = Infinity;
+const standAt = (x, z) => walkHeightAt(x, z, heightAt(x, z), feet);
 
 const KEYS = {
   forward: ['KeyW', 'ArrowUp'],
@@ -126,6 +127,7 @@ export function createPlayer(camera, canvas) {
 
   /** Advances the player. Long frames are split up so the motion stays stable at any frame rate. */
   function update(dt) {
+    feet = position.y;
     const steps = Math.max(1, Math.ceil(dt / MAX_STEP));
     for (let i = 0; i < steps; i++) step(dt / steps);
   }
@@ -207,8 +209,20 @@ export function createPlayer(camera, canvas) {
     if (Math.abs(position.x) > edge) velocity.x -= Math.sign(position.x) * (Math.abs(position.x) - edge) * 0.08 * dt * 60 * 0.05;
     if (Math.abs(position.z) > edge) velocity.z -= Math.sign(position.z) * (Math.abs(position.z) - edge) * 0.08 * dt * 60 * 0.05;
 
+    feet = position.y;
+    const wasX = position.x;
+    const wasZ = position.z;
     position.x += velocity.x * dt;
     position.z += velocity.z * dt;
+    // A tunnel's walls are solid: slide along them rather than through.
+    if (tunnelBlocks(position.x, position.z, feet)) {
+      if (!tunnelBlocks(position.x, wasZ, feet)) position.z = wasZ;
+      else if (!tunnelBlocks(wasX, position.z, feet)) position.x = wasX;
+      else {
+        position.x = wasX;
+        position.z = wasZ;
+      }
+    }
     // A river's current carries you gently downstream while you're in it.
     const current = depth > 0.25 && inRiver ? riverAt(position.x, position.z) : null;
     if (current) {

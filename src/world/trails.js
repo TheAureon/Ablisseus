@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { heightAt, slopeAt, spawnPoint, addPad, addRoadBed } from './terrain.js';
 import { ISLANDS, islandIndexAt, islandByName } from './islands.js';
-import { riverAt, findBridges, distanceToRiver } from './river.js';
+import { riverAt, findBridges, distanceToRiver, tunnelAt } from './river.js';
 
 const MASK_SIZE = 2048;
 
@@ -111,8 +111,12 @@ export function createTrails(landmarks) {
   }
   // River channels can be crossed (on a bridge), at a cost, but not walked along.
   const riverNode = new Uint8Array(N * N);
-  for (let i = 0; i < N * N; i++) if (riverAt(nodeX(i), nodeZ(i), 1.5)) riverNode[i] = 1;
-  const dry = (i) => heights[i] > water + 0.7;
+  const tunnelNode = new Uint8Array(N * N); // (paths go over a tunnel's hill, or round it, never down into it)
+  for (let i = 0; i < N * N; i++) {
+    if (riverAt(nodeX(i), nodeZ(i), 1.5)) riverNode[i] = 1;
+    if (tunnelAt(nodeX(i), nodeZ(i))) tunnelNode[i] = 1;
+  }
+  const dry = (i) => heights[i] > water + 0.7 && !tunnelNode[i];
 
   const onTrail = new Uint8Array(N * N); // cells a path already uses
   const beside = new Uint8Array(N * N); // cells right next to a path

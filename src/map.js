@@ -6,8 +6,7 @@
 // The "you are here" arrow is a separate element moved every frame.
 
 import { CONFIG } from './config.js';
-import { heightAt } from './world/terrain.js';
-import { rivers } from './world/river.js';
+import { rivers, surfaceAt, tunnelAt } from './world/river.js';
 import { biomeWeights, dominant, biomeLabel, BIOME_NAMES } from './world/biomes.js';
 import { ISLANDS, islandIndexAt, worldBounds } from './world/islands.js';
 
@@ -63,7 +62,7 @@ export function createMap({ landmarks, trails }) {
         const x = bounds.cx + (i / S - 0.5) * extent;
         const z = bounds.cz + (j / SZ - 0.5) * extentZ;
         const k = j * S + i;
-        heights[k] = heightAt(x, z);
+        heights[k] = surfaceAt(x, z);
         const w = biomeWeights(x, z);
         biome[k] = dominant(w);
         strength[k] = w[biome[k]];
@@ -257,20 +256,26 @@ export function createMap({ landmarks, trails }) {
       });
     });
 
-    // Rivers: a blue line, widening toward the sea
-    ctx.strokeStyle = 'rgba(70,120,140,0.85)';
+    // Rivers: drawn as the sea is (they're the sea's water, reaching inland), edged like its coast;
+    // dashed where they run through a tunnel.
     ctx.lineCap = 'round';
-    for (const river of rivers) {
-      const pts = river.points;
-      for (let i = 0; i < pts.length - 1; i += 2) {
-        const b = pts[Math.min(pts.length - 1, i + 2)];
-        ctx.lineWidth = Math.max(SIZE / 900, (pts[i].hw * 2.6 * W) / extent);
-        ctx.beginPath();
-        ctx.moveTo(toMapX(pts[i].x), toMapZ(pts[i].z));
-        ctx.lineTo(toMapX(b.x), toMapZ(b.z));
-        ctx.stroke();
+    for (const [style, extra] of [['rgb(156,177,176)', SIZE / 500], ['rgb(190,207,204)', 0]]) {
+      ctx.strokeStyle = style;
+      for (const river of rivers) {
+        const pts = river.points;
+        for (let i = 0; i < pts.length - 1; i += 2) {
+          const b = pts[Math.min(pts.length - 1, i + 2)];
+          const under = tunnelAt(pts[i].x, pts[i].z) && tunnelAt(b.x, b.z);
+          ctx.setLineDash(under ? [SIZE / 300, SIZE / 300] : []);
+          ctx.lineWidth = Math.max(SIZE / 700, (pts[i].hw * 2.6 * W) / extent) + extra;
+          ctx.beginPath();
+          ctx.moveTo(toMapX(pts[i].x), toMapZ(pts[i].z));
+          ctx.lineTo(toMapX(b.x), toMapZ(b.z));
+          ctx.stroke();
+        }
       }
     }
+    ctx.setLineDash([]);
     for (const b of trails.bridges ?? []) {
       ctx.strokeStyle = '#6b4a2b';
       ctx.lineWidth = SIZE / 450;

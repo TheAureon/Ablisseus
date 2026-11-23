@@ -5,13 +5,17 @@
 // through the next rise), the channel and its valley are carved into the land,
 // a flowing water surface is laid along it, and paths cross it on bridges.
 //
+// A river with `tunnel: true` instead runs in a narrow slot, and wherever the
+// land above it is high enough a rock roof closes over the slot: a tunnel
+// through the hill, with the hill's own surface on top to walk over.
+//
 // Call buildRivers() before anything reads ground heights (main.js does).
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { applyAtmosphere, NOISE_GLSL } from '../atmosphere.js';
-import { naturalHeightAt, heightAt, setCarver } from './terrain.js';
+import { groundBeforeRivers, heightAt, setCarver, groundColorAt } from './terrain.js';
 import { noise2, smoothstep } from './noise.js';
 
 /** The built rivers: [{ label, points: [{ x, z, s (water level), hw (half width), depth, foam }] }] */
@@ -23,6 +27,9 @@ const index = new Map();
 const segs = [];
 const key = (cx, cz) => cx * 8192 + cz;
 const BANK_MAX = 45;
+const LEDGE = 1.6; // dry ledge beside the water inside a tunnel (m)
+const SLOT_SPARE = 3; // the slot is cut this much wider than the tunnel, hidden inside its walls
+const SHELL = 10; // how far beyond the arch the tunnel's rock roof reaches either side
 
 function addSegment(seg) {
   const id = segs.length;
@@ -71,6 +78,12 @@ function carve(x, z, h) {
   const { d, hw, s, depth } = n;
   if (d < hw) return Math.min(h, s - depth * (1 - 0.7 * (d / hw) ** 2)); // a rounded bed
   const edge = s + 0.3;
+  if (n.seg.tunnel) {
+    // A slot with a level ledge either side of the water and sheer walls (roofed over where it's a tunnel).
+    const flat = hw + LEDGE + SLOT_SPARE;
+    if (h < edge) return Math.max(h, edge - (d - hw) * 0.25);
+    return edge + (h - edge) * smoothstep(flat, flat + 2, d);
+  }
   if (h >= edge) {
     // A strip of level meadow along the water, then the valley side: the higher
     // the land above the river, the wider the valley it has worn.
@@ -141,15 +154,17 @@ export function buildRivers() {
       const dz = b[1] - a[1];
       const len = Math.hypot(dx, dz) || 1;
       if (i) along += Math.hypot(x - course[i - 1][0], z - course[i - 1][1]);
-      const wander = noise2(along * 0.012 + 50, 3) * def.meander;
+      const wander = noise2(along * 0.012 + 50, 3) * def.meander * smoothstep(0, 40, along); // (none at the source, where a branch may join)
       return { x: x - (dz / len) * wander, z: z + (dx / len) * wander, along };
     });
     const total = along || 1;
 
     // 2. The water level: never higher than the ground (less `sink`), never rising downstream.
-    let s = Infinity;
+    // (a branch starts at the level of the river it leaves)
+    let s = def.branchOf !== undefined ? rivers[def.branchOf].points[0].s : def.maxLevel ?? Infinity;
     for (const p of pts) {
-      s = Math.max(sea + 0.05, Math.min(s, naturalHeightAt(p.x, p.z) - def.sink));
+      p.g = groundBeforeRivers(p.x, p.z);
+      s = Math.max(sea + 0.05, Math.min(s, p.g - def.sink));
       p.s = s;
     }
     // Ease the level a little so it falls in runs and rapids rather than jerks (still never rising).
@@ -167,6 +182,8 @@ export function buildRivers() {
       const drop = (p.s - next.s) / (Math.hypot(next.x - p.x, next.z - p.z) || 1);
       p.foam = Math.min(1, Math.max(0, drop - 0.04) * 6);
     }
+    // Roofed over wherever the land stands well above the water.
+    for (const p of pts) p.roof = !!def.tunnel && p.g > p.s + 6;
     const spring = def.spring ?? 0;
     rivers.push({ label: def.label, points: pts, spring: spring ? { x: pts[0].x, z: pts[0].z, s: pts[0].s, r: spring } : null });
     // The spring it rises from: a round pool (a segment of no length is a disc).
@@ -175,11 +192,134 @@ export function buildRivers() {
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i];
       const b = pts[i + 1];
-      addSegment({ ax: a.x, az: a.z, bx: b.x, bz: b.z, sa: a.s, sb: b.s, hwa: a.hw, hwb: b.hw, depth: a.depth, valley: def.valley, plain: def.plain ?? 4 });
+      addSegment({ ax: a.x, az: a.z, bx: b.x, bz: b.z, sa: a.s, sb: b.s, hwa: a.hw, hwb: b.hw, depth: a.depth, valley: def.valley, plain: def.plain ?? 4, tunnel: !!def.tunnel, roof: a.roof && b.roof ? archOf(a) : null });
     }
   }
   setCarver(carve);
   return rivers;
+}
+
+// ── Tunnels ─────────────────────────────────────────────────────────────────
+/** The tunnel's arch at river point p: half-width and height above the ledge. */
+function archOf(p) {
+  return { half: p.hw + LEDGE, rise: Math.min(p.g - p.s - 2.6, 3.2 + p.hw * 0.5) };
+}
+/** Height of the hill's surface over a tunnel (sinking just under the real ground at the roof's edges, so the seam is hidden). */
+function roofTopAt(x, z, d, half) {
+  return groundBeforeRivers(x, z) - 0.35 * smoothstep(half + SLOT_SPARE + 3, half + SHELL, d);
+}
+/** If (x, z) is under a tunnel roof: { d, half, rise, floor, top } (floor = the ledge's height), else null. */
+export function tunnelAt(x, z) {
+  const n = nearest(x, z);
+  const roof = n.seg?.roof;
+  if (!roof || n.d > roof.half + SHELL) return null;
+  return { d: n.d, half: roof.half, rise: roof.rise, floor: n.s + 0.3 };
+}
+/** Ground for drawing the map: the hill over a tunnel, not the channel through it. */
+export function surfaceAt(x, z) {
+  const t = tunnelAt(x, z);
+  return t ? Math.max(heightAt(x, z), roofTopAt(x, z, t.d, t.half)) : heightAt(x, z);
+}
+/** True where someone at height `feet` can't go: the rock either side of a tunnel's arch. */
+export function tunnelBlocks(x, z, feet) {
+  const t = tunnelAt(x, z);
+  return !!t && t.d > t.half - 0.35 && feet < roofTopAt(x, z, t.d, t.half) - 1.5;
+}
+
+/** The rock shell of every tunnel: the arch inside, the hill's surface on top, and the portal faces. */
+export function createTunnels() {
+  const group = new THREE.Group();
+  group.name = 'tunnels';
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const color = new THREE.Color();
+  const rock = new THREE.Color(CONFIG.terrain.colors.rock);
+  const ARCH = 14;
+  for (const river of rivers) {
+    const pts = river.points;
+    let i = 0;
+    while (i < pts.length) {
+      if (!pts[i].roof) {
+        i++;
+        continue;
+      }
+      let j = i;
+      while (j + 1 < pts.length && pts[j + 1].roof) j++;
+      if (j > i) buildRun(pts.slice(i, j + 1));
+      i = j + 1;
+    }
+  }
+  function buildRun(run) {
+    // One cross-section per river point: a closed outline (sides and top of the shell, then the arch).
+    const rings = [];
+    run.forEach((p, k) => {
+      const a = run[Math.max(0, k - 1)];
+      const b = run[Math.min(run.length - 1, k + 1)];
+      const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+      const nx = -(b.z - a.z) / len; // across the river
+      const nz = (b.x - a.x) / len;
+      const { half, rise } = archOf(p);
+      const floor = p.s + 0.3;
+      const base = floor - 0.5;
+      const W = half + SHELL;
+      const outline = []; // [u, y, isTop]
+      outline.push([-W, base, 0]);
+      for (let q = 0; q <= 14; q++) {
+        const u = -W + (2 * W * q) / 14; // (the same number of points on every section, so they join up)
+        outline.push([u, roofTopAt(p.x + nx * u, p.z + nz * u, Math.abs(u), half), 1]);
+      }
+      outline.push([W, base, 0]);
+      outline.push([half, base, 0]);
+      for (let q = 0; q <= ARCH; q++) {
+        const th = (q / ARCH) * Math.PI;
+        outline.push([half * Math.cos(th), floor + rise * Math.sin(th) ** 0.8, 0]);
+      }
+      outline.push([-half, base, 0]);
+      const start = positions.length / 3;
+      for (const [u, y, top] of outline) {
+        const x = p.x + nx * u;
+        const z = p.z + nz * u;
+        positions.push(x, y, z);
+        if (top) groundColorAt(x, z, y, 0.15, color);
+        else color.copy(rock).multiplyScalar(0.75 + 0.25 * noise2(x * 0.3, y * 0.3 + z * 0.3));
+        colors.push(color.r, color.g, color.b);
+      }
+      rings.push({ start, outline });
+    });
+    // Skin between neighbouring sections (wound so the outside faces out).
+    const count = rings[0].outline.length;
+    for (let k = 0; k < rings.length - 1; k++) {
+      const a = rings[k].start;
+      const b = rings[k + 1].start;
+      for (let v = 0; v < count; v++) {
+        const w = (v + 1) % count;
+        indices.push(a + v, a + w, b + v, a + w, b + w, b + v);
+      }
+    }
+    // Portal faces at both ends.
+    for (const [ring, flip] of [[rings[0], true], [rings[rings.length - 1], false]]) {
+      const contour = ring.outline.map(([u, y]) => new THREE.Vector2(u, y));
+      for (const [p0, p1, p2] of THREE.ShapeUtils.triangulateShape(contour, [])) {
+        if (flip) indices.push(ring.start + p0, ring.start + p1, ring.start + p2);
+        else indices.push(ring.start + p0, ring.start + p2, ring.start + p1);
+      }
+    }
+  }
+  if (!indices.length) return group;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+  material.defines = { ATMO_RIM_SCALE: CONFIG.terrain.surface.rim.toFixed(3) };
+  material.onBeforeCompile = (shader) => applyAtmosphere(shader);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return group;
 }
 
 // ── Walking surfaces: bridges ───────────────────────────────────────────────
@@ -189,8 +329,14 @@ export function deckHeight(b, t) {
   return b.ha + (b.hb - b.ha) * t + b.arch * Math.sin(Math.PI * t);
 }
 /** The height you stand at here: the ground, or a bridge deck above it. */
-export function walkHeightAt(x, z, ground) {
+export function walkHeightAt(x, z, ground, feet = Infinity) {
   let h = ground;
+  // Over a tunnel: on the hill above it, unless you're down inside.
+  const t = tunnelAt(x, z);
+  if (t) {
+    const inside = t.d < t.half ? t.floor + t.rise * Math.sqrt(1 - (t.d / t.half) ** 2) * 0.8 : -Infinity;
+    if (feet > inside || t.d >= t.half) h = Math.max(h, roofTopAt(x, z, t.d, t.half));
+  }
   for (const b of bridges) {
     const ex = b.bx - b.ax;
     const ez = b.bz - b.az;
@@ -219,7 +365,7 @@ export function findBridges(routes) {
       if (!inside && start >= 0) {
         const mid = samples[(start + i - 1) >> 1];
         const river = riverAt(mid[0], mid[1]);
-        if (river && !bridges.some((b) => Math.hypot((b.ax + b.bx) / 2 - mid[0], (b.az + b.bz) / 2 - mid[1]) < 10)) {
+        if (river && !tunnelAt(mid[0], mid[1]) && !bridges.some((b) => Math.hypot((b.ax + b.bx) / 2 - mid[0], (b.az + b.bz) / 2 - mid[1]) < 10)) {
           // Straight across the current, from bank to bank.
           const dx = -river.dirZ;
           const dz = river.dirX;

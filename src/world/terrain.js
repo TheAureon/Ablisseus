@@ -16,7 +16,7 @@ const openSeaFloor = (() => {
 })();
 
 /** The natural, unmodified ground height. */
-function naturalHeightAt(x, z) {
+export function groundBeforeRivers(x, z) {
   const c = CONFIG.terrain;
   const land = landAt(x, z);
   if (land <= 0) return openSeaFloor; // nothing to work out far from any island
@@ -43,8 +43,13 @@ function naturalHeightAt(x, z) {
   const above = raw - CONFIG.water.level;
   const b = c.beach;
   const shaped = CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
-  const ground = applyHeadlands(x, z, applyCliffCoasts(x, z, raw, shaped));
-  return carver ? carver(x, z, ground) : ground; // river channels (river.js)
+  return applyHeadlands(x, z, applyCliffCoasts(x, z, raw, shaped));
+}
+
+/** Natural ground including river channels (river.js). */
+function naturalHeightAt(x, z) {
+  const ground = groundBeforeRivers(x, z);
+  return carver ? carver(x, z, ground) : ground;
 }
 
 // Biomes with `canyons` (see CONFIG.biomes.types) are shaped as canyonlands.
@@ -270,6 +275,30 @@ export function slopeAt(x, z) {
 /** Values the terrain shader reads every frame (main.js keeps the sea level current with the tide). */
 export const terrainUniforms = { uSeaLevel: { value: CONFIG.water.level } };
 
+
+let colorCache = null;
+/** The ground's colour at (x, z), height y, on ground this steep (0 flat … 1 sheer). */
+export function groundColorAt(x, z, y, steep, out) {
+  const c = CONFIG.terrain;
+  const water = CONFIG.water.level;
+  if (!colorCache) colorCache = { col: Object.fromEntries(Object.entries(c.colors).map(([k, v]) => [k, new THREE.Color(v)])), alt: new THREE.Color(), rockTint: new THREE.Color() };
+  const { col, alt, rockTint } = colorCache;
+  if (y < water - 4) return out.copy(col.seabed); // deep sea: no need to work out a biome
+  // Ground colour comes from the biomes here, with a little noise variation.
+  const weights = biomeWeights(x, z);
+  blendColor(weights, 'ground', out);
+  out.lerp(blendColor(weights, 'groundAlt', alt), noise2(x * 0.02, z * 0.02) * 0.5 + 0.5);
+  out.lerp(col.sand, 1 - smoothstep(water + c.sandHeight * 0.5, water + c.sandHeight * 1.5, y));
+  out.lerp(col.seabed, 1 - smoothstep(water - 3, water - 0.3, y));
+  const rockSlope = c.rockSlope / blend(weights, 'rockiness', 1); // some biomes (snow) cling to steeper ground
+  out.lerp(blendColor(weights, 'rockColor', rockTint, c.colors.rock), smoothstep(rockSlope * 0.7, rockSlope * 1.3, steep));
+  for (const shelf of shelves) {
+    const d = Math.hypot(x - shelf.x, z - shelf.z);
+    if (d < shelf.radius * 1.6) out.lerp(col.shelf, 1 - smoothstep(shelf.radius * 0.9, shelf.radius * 1.6, d));
+  }
+  return out;
+}
+
 /** @param pathTexture optional trail mask from trails.js; its red channel tints the ground into footpath */
 /**
  * @param pathTexture optional trail mask (red channel = footpath)
@@ -306,22 +335,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
       normals[k * 3 + 2] = -dz / length;
       const steep = 1 - 1 / length;
 
-      if (y < water - 4) {
-        out.copy(col.seabed); // deep sea: no need to work out a biome
-      } else {
-        // Ground colour comes from the biomes here, with a little noise variation.
-        const weights = biomeWeights(x, z);
-        blendColor(weights, 'ground', out);
-        out.lerp(blendColor(weights, 'groundAlt', alt), noise2(x * 0.02, z * 0.02) * 0.5 + 0.5);
-        out.lerp(col.sand, 1 - smoothstep(water + c.sandHeight * 0.5, water + c.sandHeight * 1.5, y));
-        out.lerp(col.seabed, 1 - smoothstep(water - 3, water - 0.3, y));
-        const rockSlope = c.rockSlope / blend(weights, 'rockiness', 1); // some biomes (snow) cling to steeper ground
-        out.lerp(blendColor(weights, 'rockColor', rockTint, c.colors.rock), smoothstep(rockSlope * 0.7, rockSlope * 1.3, steep));
-        for (const shelf of shelves) {
-          const d = Math.hypot(x - shelf.x, z - shelf.z);
-          if (d < shelf.radius * 1.6) out.lerp(col.shelf, 1 - smoothstep(shelf.radius * 0.9, shelf.radius * 1.6, d));
-        }
-      }
+      groundColorAt(x, z, y, steep, out);
       colors[k * 3] = out.r;
       colors[k * 3 + 1] = out.g;
       colors[k * 3 + 2] = out.b;
