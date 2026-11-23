@@ -21,7 +21,7 @@ export const CONFIG = {
     // you swim out from to reach it (otherwise the one listed just before).
     { name: 'shard',  label: 'Shardrock',      x: -770, z: -640, radius: 90,  biomes: ['crystal'],  from: 'home' },
     { name: 'mycel',  label: 'The Mycel Isle', x: -300, z: -560, radius: 105, biomes: ['fungal'],   from: 'home' },
-    { name: 'mesa',   label: 'The Red Mesa',   x: 330,  z: -690, radius: 120, biomes: ['mesa'],     from: 'far' },
+    { name: 'mesa',   label: 'The Red Mesa',   x: 330,  z: -770, radius: 195, biomes: ['mesa'],     from: 'far' },
     { name: 'bamboo', label: 'Bamboo Holm',    x: -560, z: 610,  radius: 100, biomes: ['bamboo'],   from: 'home' },
     { name: 'birch',  label: 'Birchwhite',     x: -90,  z: 600,  radius: 90,  biomes: ['birch'],    from: 'far' },
     { name: 'coral',  label: 'Coral Key',      x: 780,  z: 770,  radius: 100, biomes: ['atoll'],    from: 'far' },
@@ -223,6 +223,7 @@ export const CONFIG = {
   //   wind/leaves/birds/crickets – how much of each sound you hear there (0 = none)
   //   footstep           – what the ground sounds like: 'grass', 'sand' or 'snow'
   //   rockColor          – colour of bare rock on steep ground (default: terrain.colors.rock)
+  //   canyons            – shape it as canyonlands: { floor: metres, tierHeight, riser: share of each tier that is wall, scale: lower = longer canyons, width: metres }
   //   mapSymbol/mapDensity – how it is drawn on the map: 'pine', 'tree', 'tuft', 'dots', 'peak'; 0..1 how many
   biomes: {
     scale: 0.0032, // lower = larger regions
@@ -239,7 +240,7 @@ export const CONFIG = {
       // The small islands' own
       crystal:  { label: 'Shardrock',       ground: '#3d3a48', groundAlt: '#4a4558', heightScale: 1.1,  heightOffset: 3,    fog: 0.9,  motes: '#d8b8ff', rockiness: 0.6, rockColor: '#34303e', wind: 1.1, leaves: 0.0, birds: 0.05, crickets: 0.2, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.4 },
       fungal:   { label: 'The Mycel Isle',  ground: '#4c5a6e', groundAlt: '#5e4f73', heightScale: 0.6,  heightOffset: 1,    fog: 1.6,  motes: '#a8f0ff', wind: 0.4, leaves: 0.2, birds: 0.2, crickets: 1.4, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.6 },
-      mesa:     { label: 'The Red Mesa',    ground: '#b4643f', groundAlt: '#c27a4c', heightScale: 1.4,  heightOffset: 6,    fog: 0.7,  motes: '#ffc9a0', rockiness: 1.6, rockColor: '#9a4a30', wind: 1.3, leaves: 0.0, birds: 0.15, crickets: 0.5, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.35 },
+      mesa:     { label: 'The Red Mesa',    ground: '#b4643f', groundAlt: '#c27a4c', heightScale: 0.9,  heightOffset: 24,    fog: 0.7,  motes: '#ffc9a0', rockiness: 1.6, rockColor: '#9a4a30', wind: 1.3, leaves: 0.0, birds: 0.15, crickets: 0.5, footstep: 'sand', mapSymbol: 'peak', mapDensity: 0.35, canyons: { floor: 3, tierHeight: 10, riser: 0.2, scale: 0.0068, width: 24, side: 0.5 } },
       bamboo:   { label: 'Bamboo Holm',     ground: '#6f8f45', groundAlt: '#86a352', heightScale: 0.7,  heightOffset: 1,    fog: 1.2,  motes: '#e8ffc0', wind: 0.9, leaves: 1.2, birds: 1.1, crickets: 1.0, footstep: 'grass', mapSymbol: 'tuft', mapDensity: 0.8 },
       birch:    { label: 'Birchwhite',      ground: '#8f8a4a', groundAlt: '#a39350', heightScale: 0.65, heightOffset: 1,    fog: 1.0,  motes: '#ffe7a0', wind: 0.8, leaves: 1.0, birds: 1.0, crickets: 0.8, footstep: 'grass', mapSymbol: 'tree', mapDensity: 0.7 },
       atoll:    { label: 'Coral Key',       ground: '#efe6c8', groundAlt: '#e3d6b0', heightScale: 0.25, heightOffset: -1.5, fog: 0.6,  motes: '#fff6d8', wind: 1.0, leaves: 0.3, birds: 0.7, crickets: 0.6, footstep: 'sand', mapSymbol: 'dots', mapDensity: 0.3 },
@@ -310,10 +311,10 @@ export const CONFIG = {
     { biome: 'fungal',   asset: 'fern',        count: 1200,  height: [1, 40],   maxSlope: 0.5,  scale: [0.7, 1.5], sway: 0.1, colorJitter: 0.3, drawDistance: 110 },
 
     // The Red Mesa — red rock, hoodoos and dry grass
-    { biome: 'mesa',     asset: 'hoodoo',      count: 45,    height: [2, 90],   maxSlope: 0.5,  scale: [0.9, 1.8], colorJitter: 0.15, castShadow: true },
-    { biome: 'mesa',     asset: 'rockRed',     count: 170,   height: [-1, 90],  maxSlope: 1.2,  scale: [0.4, 3.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
-    { biome: 'mesa',     asset: 'grassDry',    count: 1100,  height: [1.2, 60], maxSlope: 0.4,  scale: [0.7, 1.5], cluster: { scale: 0.04, threshold: 0.0 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
-    { biome: 'mesa',     asset: 'bush',        count: 130,   height: [1.2, 60], maxSlope: 0.4,  scale: [0.6, 1.3], colorJitter: 0.3, castShadow: true, drawDistance: 320 },
+    { biome: 'mesa',     asset: 'hoodoo',      count: 70,    height: [2, 90],   maxSlope: 0.5,  scale: [0.9, 1.8], colorJitter: 0.15, castShadow: true },
+    { biome: 'mesa',     asset: 'rockRed',     count: 442,   height: [-1, 90],  maxSlope: 1.2,  scale: [0.4, 3.0], colorJitter: 0.2, castShadow: true, sink: 0.15, drawDistance: 420 },
+    { biome: 'mesa',     asset: 'grassDry',    count: 2860,  height: [1.2, 60], maxSlope: 0.4,  scale: [0.7, 1.5], cluster: { scale: 0.04, threshold: 0.0 }, sway: 0.25, colorJitter: 0.25, drawDistance: 150 },
+    { biome: 'mesa',     asset: 'bush',        count: 338,   height: [1.2, 60], maxSlope: 0.4,  scale: [0.6, 1.3], colorJitter: 0.3, castShadow: true, drawDistance: 320 },
 
     // Bamboo Holm — tall swaying bamboo over ferns
     { biome: 'bamboo',   asset: 'bamboo',      count: 300,   height: [1, 40],   maxSlope: 0.45, scale: [0.8, 1.4], sway: 0.025, colorJitter: 0.2, castShadow: true },

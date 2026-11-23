@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { applyAtmosphere, NOISE_GLSL } from '../atmosphere.js';
-import { heightNoise, noise2, smoothstep } from './noise.js';
+import { heightNoise, canyonNoise, noise2, smoothstep } from './noise.js';
 import { biomeWeights, blend, blendColor } from './biomes.js';
 import { landAt } from './islands.js';
 
@@ -34,7 +34,8 @@ function naturalHeightAt(x, z) {
 
   // Each biome reshapes the land: flatter, hillier, higher or lower.
   const weights = biomeWeights(x, z);
-  const height = c.baseHeight + blend(weights, 'heightOffset', 0) + n * c.amplitude * blend(weights, 'heightScale', 1);
+  let height = c.baseHeight + blend(weights, 'heightOffset', 0) + n * c.amplitude * blend(weights, 'heightScale', 1);
+  height = applyCanyonlands(x, z, height, weights, land);
   const raw = land * height - (1 - land) * c.seabedDepth;
 
   // Beaches: ease the slope either side of the waterline so the shore is a
@@ -43,6 +44,49 @@ function naturalHeightAt(x, z) {
   const b = c.beach;
   const shaped = CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
   return applyHeadlands(x, z, applyCliffCoasts(x, z, raw, shaped));
+}
+
+// Biomes with `canyons` (see CONFIG.biomes.types) are shaped as canyonlands.
+const canyonBiomes = Object.values(CONFIG.biomes.types).map((t) => t.canyons ?? null);
+
+/**
+ * Canyonlands: flat-topped tiers of rock with sheer risers between them, cut
+ * by winding canyons whose floors you can walk along. The canyons follow the
+ * lines where a slow noise field crosses zero, so they wind and branch
+ * naturally; a second, finer field adds side canyons. Kept off the coast so
+ * the island's edge stays whole.
+ */
+function applyCanyonlands(x, z, height, weights, land) {
+  let strength = 0;
+  let spec = null;
+  for (let i = 0; i < canyonBiomes.length; i++) {
+    if (canyonBiomes[i] && weights[i] > strength) {
+      strength = weights[i];
+      spec = canyonBiomes[i];
+    }
+  }
+  if (!spec || strength < 0.01) return height;
+  strength *= smoothstep(0.25, 0.55, land); // not right at the shore
+
+  // Tiers: the land rises in flat steps with near-vertical risers.
+  const T = spec.tierHeight;
+  const level = Math.max(0, height - spec.floor) / T;
+  const step = Math.floor(level);
+  const tiered = spec.floor + (step + smoothstep(1 - spec.riser, 1, level - step)) * T;
+
+  // Canyons: narrow, winding, with steep walls. Warp the field a little so they meander.
+  const s = spec.scale;
+  const wx = x + noise2(x * 0.02, z * 0.02) * 18;
+  const wz = z + noise2(x * 0.02 + 40, z * 0.02) * 18;
+  const main = Math.abs(canyonNoise.noise(wx * s, wz * s));
+  const side = Math.abs(canyonNoise.noise(wx * s * 2.3 + 17, wz * s * 2.3 - 9));
+  const halfWidth = (spec.width / 2) * s * 1.6; // metres → noise units (the field changes about 1.6·s per metre)
+  const sideWidth = halfWidth * 2.3 * (spec.side ?? 0.6); // side canyons are narrower
+  const canyon = Math.max(1 - smoothstep(halfWidth * 0.55, halfWidth, main), (1 - smoothstep(sideWidth * 0.5, sideWidth, side)) * 0.85);
+  const floorHeight = spec.floor + noise2(x * 0.04, z * 0.04) * 0.6;
+  const shaped = tiered + (floorHeight - tiered) * canyon;
+
+  return height + (shaped - height) * strength;
 }
 
 /** Blocky ups and downs for the top edge of a cliff, as if chunks had broken away (metres). */
