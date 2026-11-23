@@ -189,7 +189,13 @@ THREE.ShaderChunk.lights_fragment_end += /* glsl */ `
 
 /** Smooth 2D noise for use inside shaders (paste into a shader's header). */
 export const NOISE_GLSL = /* glsl */ `
-  float aHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  // A hash without sin(): sin of large numbers is computed at low precision on
+  // many GPUs, which turns noise into visible squares far from the world's centre.
+  float aHash(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
   float aNoise(vec2 p) {
     vec2 i = floor(p); vec2 f = fract(p);
     f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);   // quintic ease: no visible grid creases

@@ -307,8 +307,10 @@ export function createTerrain(pathTexture = null, canopies = []) {
         // Fine unevenness of the ground, used to roughen how it catches the light.
         float groundBump(vec2 p) { return aNoise(p * 0.9) * 0.65 + aNoise(p * 2.6) * 0.35; }
         // Larger relief: tussocks, hummocks and rills a few metres across.
-        float groundRelief(vec2 p) { return aNoise(p * 0.18) * 0.55 + aNoise(p * 0.47 + 31.0) * 0.3 + aNoise(p * 1.3 + 17.0) * 0.15; }
-        float fbm4(vec2 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 4; i++) { v += a * aNoise(p); p = p * 2.03 + 11.0; a *= 0.5; } return v / 0.9375; }`,
+        float groundRelief(vec2 p) { return aNoise(p * 0.18) * 0.55 + aNoise(mat2(0.8, 0.6, -0.6, 0.8) * p * 0.47 + 31.0) * 0.3 + aNoise(mat2(0.6, -0.8, 0.8, 0.6) * p * 1.3 + 17.0) * 0.15; }
+        // Each octave is turned by an odd angle, so the noise's square grid never lines up between layers.
+        const mat2 octaveTurn = mat2(1.6, 1.2, -1.2, 1.6);
+        float fbm4(vec2 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 4; i++) { v += a * aNoise(p); p = octaveTurn * p + 11.0; a *= 0.5; } return v / 0.9375; }`,
       )
       .replace(
         '#include <color_fragment>',
@@ -360,7 +362,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.34, 0.24) * (0.85 + clumps * 0.3), clamp(bare * green * 0.7 * S * mid, 0.0, 1.0));
 
         // Grit: a fine speckle of light and dark close up, on every kind of ground.
-        float grit = aNoise(vGroundXZ * 3.7) * 0.55 + aNoise(vGroundXZ * 9.3 + 5.0) * 0.45;
+        float grit = aNoise(vGroundXZ * 3.7) * 0.55 + aNoise(octaveTurn * vGroundXZ * 5.8 + 5.0) * 0.45;
         diffuseColor.rgb *= 1.0 + (grit - 0.5) * (0.34 - pale * 0.18) * S * near;
 
         // Steep ground: weathered rock with streaks running down the slope and darker cracks.
