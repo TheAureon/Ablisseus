@@ -277,6 +277,9 @@ export const terrainUniforms = { uSeaLevel: { value: CONFIG.water.level } };
 
 
 let colorCache = null;
+let groundMaterial = null;
+/** The ground's own material (made by createTerrain), for other meshes that should look like the ground. */
+export const terrainMaterial = () => groundMaterial;
 /** The ground's colour at (x, z), height y, on ground this steep (0 flat … 1 sheer). */
 export function groundColorAt(x, z, y, steep, out) {
   const c = CONFIG.terrain;
@@ -343,6 +346,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
   }
 
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: c.flatShading });
+  groundMaterial = material;
   // Ground is matte: only a little of the shared sky-coloured rim light (see atmosphere.js).
   material.defines = { ATMO_RIM_SCALE: CONFIG.terrain.surface.rim.toFixed(3) };
   // Without trails there is still a (blank) mask, so the shader is the same either way.

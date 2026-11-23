@@ -213,7 +213,7 @@ export const CONFIG = {
   },
 
   // ── Rivers ────────────────────────────────────────────────────────────────
-  // Rivers placed by hand: waypoints [x, z] from source to sea. The water level
+  // Rivers placed by hand: waypoints [x, z] along the course. The water level
   // is worked out so it only runs downhill, and the river cuts its own valley
   // (or a gorge, through high ground). halfWidth: [at the source, at the mouth];
   // depth of the channel; sink: how far the water sits below the ground it
@@ -223,28 +223,20 @@ export const CONFIG = {
   rivers: [
     {
       label: 'The Long River',
-      points: [[700, -112], [630, -50], [545, 0], [455, 30], [360, 60], [270, 85], [180, 110], [100, 135], [35, 150], [-10, 160]],
-      halfWidth: [2, 6.5],
+      // From the sea cliff in the east, through the cape (in a tunnel), past
+      // its source, then west across the island to the sea.
+      points: [[850, -112], [790, -111], [745, -113], [700, -112], [630, -50], [545, 0], [455, 30], [360, 60], [270, 85], [180, 110], [100, 135], [35, 150], [-10, 160]],
+      source: 3, // the waypoint it rises at; it runs away from there both ways
+      tunnel: [0, 3], // waypoints between which it runs in a slot, roofed over where the land is high (a tunnel)
+      halfWidth: [2, 6.5], // [at the source, furthest downstream]
       depth: 1.3,
       sink: 0.6,
       valley: 1.6,
       plain: 4,
-      spring: 0, // radius of a pool it rises from (0 for none)
-      maxLevel: 18, // highest its water stands (here, level with the sea tunnel it joins at the source)
+      spring: 0, // radius of a pool at the source (0 for none)
+      maxLevel: 18, // highest its water stands
+      smoothing: [2, 8], // how gently the level falls, [toward the first waypoint, toward the last] (more = longer, smoother runs; less = sharper falls)
       meander: 7,
-    },
-    {
-      // Its other end: from the same source east through the headland in a
-      // tunnel, spilling out of the sea cliff as a waterfall into the ocean.
-      label: 'The Sea Tunnel',
-      branchOf: 0, // starts at the level of river 0's source
-      tunnel: true, // a slot, roofed over wherever the land is high above it
-      points: [[700, -112], [745, -113], [790, -111], [850, -112]],
-      halfWidth: [2, 2.4],
-      depth: 1.1,
-      sink: 0.6,
-      plain: 0,
-      meander: 2,
     },
   ],
   riverLook: { color: '#2f6a74', shallowColor: '#79bfb0' },
