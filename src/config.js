@@ -210,6 +210,29 @@ export const CONFIG = {
     poolsPerShelf: [2, 4],
   },
 
+  // ── Rivers ────────────────────────────────────────────────────────────────
+  // Rivers placed by hand: waypoints [x, z] from source to sea. The water level
+  // is worked out so it only runs downhill, and the river cuts its own valley
+  // (or a gorge, through high ground). halfWidth: [at the source, at the mouth];
+  // depth of the channel; sink: how far the water sits below the ground it
+  // flows over; valley: how wide the valley is for its depth (smaller = steeper
+  // gorge walls); plain: level meadow beside the water (metres); meander: how
+  // far it wanders from the waypoint line (metres).
+  rivers: [
+    {
+      label: 'The Long River',
+      points: [[700, -112], [630, -50], [545, 0], [455, 30], [360, 60], [270, 85], [180, 110], [100, 135], [35, 150], [-10, 160]],
+      halfWidth: [2, 6.5],
+      depth: 1.3,
+      sink: 0.6,
+      valley: 1.6,
+      plain: 4,
+      spring: 6, // radius of the pool it rises from (0 for none)
+      meander: 7,
+    },
+  ],
+  riverLook: { color: '#2f6a74', shallowColor: '#79bfb0' },
+
   // ── Biomes ────────────────────────────────────────────────────────────────
   // Regions of the island, each with its own look. Add, remove or edit entries
   // freely; props are assigned to a biome with `biome: 'name'` in `scatter` below.
@@ -433,6 +456,7 @@ export const CONFIG = {
     bed: { enabled: true, shoulder: 1, blend: 5, smoothing: 12, maxGrade: 0.3 }, // metres of level verge / of easing back into the slope; steepest rise along the path
     slopeAvoidance: 7, // higher = paths wind further to stay on gentle ground
     parallelPenalty: 3, // discourages a new path from running alongside an existing one instead of joining it
+    riverCrossCost: 4, // how much paths avoid crossing rivers (they cross on bridges where they must)
     mergeWithin: 70, // a side path shorter than this that just rejoins the main one is removed (metres)
     reuseDiscount: 0.35, // lower = routes merge into shared trunk paths more eagerly
     loopReuseDiscount: 0.6, // same, for the landmark-to-landmark loop routes

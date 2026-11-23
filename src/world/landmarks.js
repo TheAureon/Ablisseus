@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 import { heightAt, slopeAt, findDryLand, spawnPoint, addPad } from './terrain.js';
+import { distanceToRiver } from './river.js';
 import { biomeWeights, biomeIndex } from './biomes.js';
 import { flattenTemplate } from './scatter.js';
 import { ISLANDS, islandByName, islandIndexAt } from './islands.js';
@@ -40,7 +41,7 @@ export function placeLandmarks() {
             const height = heightAt(x, z);
             if (height < CONFIG.water.level + (lm.prefer === 'low' ? 0.7 : 2.5)) continue;
             const slope = slopeAt(x, z);
-            if (slope > maxSlope) continue;
+            if (slope > maxSlope || distanceToRiver(x, z) < 30) continue;
             // Deep inside the biome, on gentle ground, ideally a little raised
             // (or as high as possible for `prefer: 'summit'`).
             const lift = lm.prefer === 'summit' ? height * 0.05 : lm.prefer === 'low' ? -height * 0.25 : Math.min(height, 25) * 0.015;

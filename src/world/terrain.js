@@ -43,7 +43,8 @@ function naturalHeightAt(x, z) {
   const above = raw - CONFIG.water.level;
   const b = c.beach;
   const shaped = CONFIG.water.level + above * (b.flatten + (1 - b.flatten) * smoothstep(0, b.height, Math.abs(above)));
-  return applyHeadlands(x, z, applyCliffCoasts(x, z, raw, shaped));
+  const ground = applyHeadlands(x, z, applyCliffCoasts(x, z, raw, shaped));
+  return carver ? carver(x, z, ground) : ground; // river channels (river.js)
 }
 
 // Biomes with `canyons` (see CONFIG.biomes.types) are shaped as canyonlands.
@@ -87,6 +88,13 @@ function applyCanyonlands(x, z, height, weights, land) {
   const shaped = tiered + (floorHeight - tiered) * canyon;
 
   return height + (shaped - height) * strength;
+}
+
+// Rivers (river.js) hand in a function that cuts their channels into the land;
+// every height after that includes them.
+let carver = null;
+export function setCarver(fn) {
+  carver = fn;
 }
 
 /** Blocky ups and downs for the top edge of a cliff, as if chunks had broken away (metres). */

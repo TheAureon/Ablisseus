@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { applyAtmosphere } from '../atmosphere.js';
 import { heightAt, approxHeightAt, approxSlopeAt } from './terrain.js';
+import { distanceToRiver } from './river.js';
 import { noise2, seededRandom, smoothstep } from './noise.js';
 import { approxBiomeWeight, biomeIndex } from './biomes.js';
 import { randomIslandPoint } from './islands.js';
@@ -105,6 +106,8 @@ function placeLayer(layer, index, trails) {
     // Keep trails, camps and landmarks clear: nothing on the path itself, and
     // nothing tall close beside it.
     if (trails && (layer.castShadow ? trails.clearanceAt(x, z) : trails.pathAt(x, z)) > 0.25) continue;
+
+    if (distanceToRiver(x, z) < (layer.castShadow ? 1.5 : 0.2)) continue; // nothing growing in the river
 
     const y = heightAt(x, z); // the exact height, for the few that survive
     if (y < minH || y > maxH) continue;

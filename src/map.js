@@ -7,6 +7,7 @@
 
 import { CONFIG } from './config.js';
 import { heightAt } from './world/terrain.js';
+import { rivers } from './world/river.js';
 import { biomeWeights, dominant, biomeLabel, BIOME_NAMES } from './world/biomes.js';
 import { ISLANDS, islandIndexAt, worldBounds } from './world/islands.js';
 
@@ -255,6 +256,29 @@ export function createMap({ landmarks, trails }) {
         }
       });
     });
+
+    // Rivers: a blue line, widening toward the sea
+    ctx.strokeStyle = 'rgba(70,120,140,0.85)';
+    ctx.lineCap = 'round';
+    for (const river of rivers) {
+      const pts = river.points;
+      for (let i = 0; i < pts.length - 1; i += 2) {
+        const b = pts[Math.min(pts.length - 1, i + 2)];
+        ctx.lineWidth = Math.max(SIZE / 900, (pts[i].hw * 2.6 * W) / extent);
+        ctx.beginPath();
+        ctx.moveTo(toMapX(pts[i].x), toMapZ(pts[i].z));
+        ctx.lineTo(toMapX(b.x), toMapZ(b.z));
+        ctx.stroke();
+      }
+    }
+    for (const b of trails.bridges ?? []) {
+      ctx.strokeStyle = '#6b4a2b';
+      ctx.lineWidth = SIZE / 450;
+      ctx.beginPath();
+      ctx.moveTo(toMapX(b.ax), toMapZ(b.az));
+      ctx.lineTo(toMapX(b.bx), toMapZ(b.bz));
+      ctx.stroke();
+    }
 
     // Island names, in the sea just north of each
     for (const island of ISLANDS) {

@@ -18,6 +18,7 @@ import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOM
 import { createScatter, createPlacedProps, updateScatter, canopies } from './world/scatter.js';
 import { placeLandmarks, createLandmarks } from './world/landmarks.js';
 import { createTrails } from './world/trails.js';
+import { buildRivers, rivers, createRiverWater, createBridges, distanceToRiver } from './world/river.js';
 import { createCampfires } from './world/campfire.js';
 import { createHorizon } from './world/horizon.js';
 import { nightGlowMaterials } from './placeholders.js';
@@ -82,6 +83,7 @@ const templates = await loadAssets();
 
 // Landmarks choose their spots first, trails are planned between them, and
 // only then is everything else grown around the paths.
+buildRivers(); // (rivers cut their valleys into the land before anything else reads it)
 const tidePools = placeTidePools(); // (these reshape the shore, so they go first)
 const landmarks = placeLandmarks();
 const trails = createTrails(landmarks);
@@ -94,6 +96,8 @@ if (tidePools.length) scene.add(createPlacedProps(templates.rockPool, 'rockPool'
 for (const [asset, placements] of Object.entries(trails.props)) {
   if (placements.length) scene.add(createPlacedProps(templates[asset], asset, placements, { drawDistance: 380 }));
 }
+const riverWater = createRiverWater(heightTexture);
+scene.add(riverWater.object, createBridges(trails.bridges));
 const campfires = createCampfires(templates.campfire, trails.campfires);
 scene.add(campfires.object);
 
@@ -258,7 +262,7 @@ if (CONFIG.debug.gui) {
 }
 
 // Handy for poking at things from the browser console.
-window.TERRA = { CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt, atmosphere, hillShadows, title };
+window.TERRA = { rivers, CONFIG, scene, camera, renderer, player, live, adaptive, trails, landmarks, map, heightAt, atmosphere, hillShadows, title };
 
 // ── Frame loop ──────────────────────────────────────────────────────────────
 const timer = new THREE.Timer();
@@ -347,6 +351,7 @@ renderer.setAnimationLoop(() => {
   if (!CONFIG.time.paused && !(title.active && !title.leaving)) live.time = (live.time + dt / CONFIG.time.dayLengthSeconds) % 1;
 
   player.update(dt);
+  riverWater.update(elapsed);
   updateTitle(dt, elapsed);
   body.update(dt, player.state);
   map.update(player.position, player.state.yaw);
@@ -371,7 +376,7 @@ renderer.setAnimationLoop(() => {
   surroundings.timer -= dt;
   if (surroundings.timer <= 0) {
     surroundings.timer = 0.25;
-    surroundings.water = waterNearness(player.position.x, player.position.z);
+    surroundings.water = Math.max(waterNearness(player.position.x, player.position.z), 0.8 * (1 - Math.min(1, distanceToRiver(player.position.x, player.position.z) / 28)));
   }
   updateSoundscape(dt, {
     wind: blend(weights, 'wind', 1) + THREE.MathUtils.smoothstep(altitude, 25, 80) * CONFIG.audio.altitudeWind,

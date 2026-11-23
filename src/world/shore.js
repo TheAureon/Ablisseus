@@ -9,6 +9,7 @@ import { CONFIG } from '../config.js';
 import { naturalHeightAt, addRockShelf } from './terrain.js';
 import { seededRandom } from './noise.js';
 import { ISLANDS } from './islands.js';
+import { distanceToRiver } from './river.js';
 
 /** Chooses the shelves and returns where each pool goes: [{ x, z, rotation, scale }]. */
 export function placeTidePools() {
@@ -42,6 +43,7 @@ export function placeTidePools() {
       // No tide-pool shelves at the foot of a cliff coast or a headland: a shelf would level the cliff.
       if ((CONFIG.terrain.cliffCoasts ?? []).some((cc) => Math.hypot(cc.x - x, cc.z - z) < cc.radius + 15)) continue;
       if ((CONFIG.terrain.headlands ?? []).some((hd) => Math.hypot(hd.to[0] - x, hd.to[1] - z) < Math.max(...hd.width) + 25)) continue;
+      if (distanceToRiver(x, z) < 30) continue; // nor in a river mouth
       sites.push([x, z]);
       found++;
     }

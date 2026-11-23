@@ -5,6 +5,10 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { heightAt, spawnPoint, terrainUniforms, swellAt } from './world/terrain.js';
 import { atmosphere } from './atmosphere.js';
+import { walkHeightAt, riverWaterAt, riverAt } from './world/river.js';
+
+/** Where your feet rest: the ground, or a bridge deck. */
+const standAt = (x, z) => walkHeightAt(x, z, heightAt(x, z));
 
 const KEYS = {
   forward: ['KeyW', 'ArrowUp'],
@@ -160,10 +164,12 @@ export function createPlayer(camera, canvas) {
     // ── Water ──
     // Wading slows you more the deeper you go. Once the water is deep enough
     // to float in, your feet leave the bottom and you swim.
-    const ground = heightAt(position.x, position.z);
+    const ground = standAt(position.x, position.z);
     const seaLevel = terrainUniforms.uSeaLevel.value; // includes the tide
-    const depth = Math.max(0, seaLevel - ground); // metres of water here
-    const surface = seaLevel + swellAt(position.x, position.z, atmosphere.uTime.value) * 0.7; // you ride the swell
+    const riverLevel = riverWaterAt(position.x, position.z); // (a river's surface is calm, and above the sea)
+    const inRiver = riverLevel > seaLevel;
+    const depth = Math.max(0, (inRiver ? riverLevel : seaLevel) - ground); // metres of water here
+    const surface = inRiver ? riverLevel : seaLevel + swellAt(position.x, position.z, atmosphere.uTime.value) * 0.7; // you ride the swell
     const floatY = surface - c.swimFloatDepth; // where your feet hang when floating
     const swimming = !airborne && floatY > ground;
     const swimSpeed = c.walkSpeed * c.swimFactor; // (read each frame, so the G panel's speed sliders apply)
@@ -180,7 +186,7 @@ export function createPlayer(camera, canvas) {
 
     // Slopes: slower uphill, a touch quicker downhill (not while afloat).
     if (!swimming && target.lengthSq() > 0.001) {
-      const ahead = heightAt(position.x + target.x * 0.6, position.z + target.z * 0.6);
+      const ahead = standAt(position.x + target.x * 0.6, position.z + target.z * 0.6);
       const grade = (ahead - ground) / 0.6;
       pace *= THREE.MathUtils.clamp(1 - grade * c.slopeEffect, 0.45, 1.15);
     }
@@ -203,9 +209,16 @@ export function createPlayer(camera, canvas) {
 
     position.x += velocity.x * dt;
     position.z += velocity.z * dt;
+    // A river's current carries you gently downstream while you're in it.
+    const current = depth > 0.25 && inRiver ? riverAt(position.x, position.z) : null;
+    if (current) {
+      const pull = (swimming ? 0.6 : 0.25) * dt;
+      position.x += current.dirX * pull;
+      position.z += current.dirZ * pull;
+    }
 
     // ── Vertical: follow the ground, or fly through a jump ──
-    const floor = Math.max(heightAt(position.x, position.z), floatY); // solid ground, or the depth you float at
+    const floor = Math.max(standAt(position.x, position.z), floatY); // solid ground, or the depth you float at
     const jumpHeld = held('jump') || touchJump;
     let crouch = 0;
 
@@ -291,7 +304,7 @@ export function createPlayer(camera, canvas) {
     const crane = Math.max(0, -euler.x) * CONFIG.body.lookDownLean;
     camera.position.x -= Math.sin(euler.y) * crane;
     camera.position.z -= Math.cos(euler.y) * crane;
-    camera.position.y = Math.max(camera.position.y, heightAt(position.x, position.z) + 0.3); // never sink into the ground
+    camera.position.y = Math.max(camera.position.y, standAt(position.x, position.z) + 0.3); // never sink into the ground
     if (depth > 0.5) camera.position.y = Math.max(camera.position.y, surface + 0.12); // keep your eyes above the water
     camera.quaternion.setFromEuler(euler);
 
@@ -321,7 +334,7 @@ export function createPlayer(camera, canvas) {
       // Back on your feet on the ground below (or in the water there).
       airborne = false;
       verticalSpeed = 0;
-      position.y = heightAt(position.x, position.z);
+      position.y = standAt(position.x, position.z);
     }
     state.flying = on;
   }
@@ -357,7 +370,7 @@ export function createPlayer(camera, canvas) {
     const half = CONFIG.terrain.size / 2;
     position.x = THREE.MathUtils.clamp(position.x, -half, half);
     position.z = THREE.MathUtils.clamp(position.z, -half, half);
-    position.y = THREE.MathUtils.clamp(position.y, heightAt(position.x, position.z) + S.minHeight - c.eyeHeight, S.maxHeight);
+    position.y = THREE.MathUtils.clamp(position.y, standAt(position.x, position.z) + S.minHeight - c.eyeHeight, S.maxHeight);
 
     euler.z = 0;
     fovOffset += (0 - fovOffset) * ease(3, dt);
