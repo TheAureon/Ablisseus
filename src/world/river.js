@@ -209,7 +209,7 @@ export function buildRivers() {
       const q = pts[Math.min(pts.length - 1, Math.max(0, i + p.flow))];
       drops.push(Math.max(0, p.s - q.s) / (Math.hypot(q.x - p.x, q.z - p.z) || 1));
     }
-    pts.forEach((p, i) => (p.foam = Math.min(1, Math.max(0, window(drops, i, (v) => v.reduce((a, b) => a + b, 0) / v.length) - 0.03) * 7)));
+    pts.forEach((p, i) => (p.foam = Math.min(1, Math.max(0, window(drops, i, (v) => v.reduce((a, b) => a + b, 0) / v.length) - 0.1) * 5)));
 
     // A tunnel along part of it (`tunnel: [from, to]` waypoints): roofed over wherever the land stands well above the water.
     const [ta, tb] = def.tunnel ? [closest(def.points[def.tunnel[0]]), closest(def.points[def.tunnel[1]])].sort((a, b) => a - b) : [-1, -1];
@@ -511,7 +511,7 @@ export function createBridges(bridges) {
 /** The material for the river: clear in the shallows, rippling and foaming with the flow. */
 function waterMaterial(heightTexture, uniforms, R) {
   const w = CONFIG.water;
-  const material = new THREE.MeshStandardMaterial({ color: R.color, transparent: true, opacity: 0.88, roughness: 0.12, metalness: 0.1, depthWrite: false });
+  const material = new THREE.MeshStandardMaterial({ color: R.color, transparent: true, opacity: 0.88, roughness: 0.2, metalness: 0.05, depthWrite: false });
   material.onBeforeCompile = (shader) => {
     applyAtmosphere(shader);
     Object.assign(shader.uniforms, uniforms, {
@@ -547,9 +547,13 @@ function waterMaterial(heightTexture, uniforms, R) {
         ${NOISE_GLSL}
         // Ripples carried along by the current: drawn in the river's own along/across metres,
         // scrolled downstream at one steady speed, so the pattern never shears or creases.
+        // Small, layered and a little stretched along the current, like real moving water
+        // (no big round cells): each layer drifts at its own pace.
         float flowRipples(vec2 p) {
-          vec2 drift = vec2(uTime * 0.9, 0.0);
-          return aNoise(p * 0.9 - drift * 0.9) * 0.6 + aNoise(p * 2.3 - drift * 1.6 + 9.0) * 0.4;
+          vec2 q = vec2(p.x * 0.7, p.y);
+          return aNoise(q * 1.6 - vec2(uTime * 1.1, 0.0)) * 0.45
+               + aNoise(q * 3.7 - vec2(uTime * 1.6, 0.0) + 7.0) * 0.35
+               + aNoise(q * 8.3 - vec2(uTime * 2.3, 0.0) + 19.0) * 0.2;
         }`,
       )
       .replace(
@@ -560,34 +564,38 @@ function waterMaterial(heightTexture, uniforms, R) {
         vec2 groundUv = vWet.xz / uTerrainSize + 0.5;
         float ground = texture2D(uHeightMap, (groundUv * (uHeightTexels - 1.0) + 0.5) / uHeightTexels).r;
         float depth = vWet.y - ground;
-        float shallow = 1.0 - smoothstep(0.0, 1.4, depth);
-        diffuseColor.rgb = mix(diffuseColor.rgb, uShallowColor, shallow * 0.75);
-        diffuseColor.a *= mix(0.25, 1.0, smoothstep(0.0, 0.9, depth)) * smoothstep(-0.05, 0.03, depth);
-        // Foam: a thin line at the water's edge, and white water over rapids, streaming with the flow.
+        // A wavering shoreline, so it doesn't follow the straight edges of the ground's triangles.
+        float shore = depth + (aNoise(vWet.xz * 0.9) - 0.5) * 0.3 + (aNoise(vWet.xz * 2.7 + 5.0) - 0.5) * 0.12;
+        // Colour: clear and pale over the shallows (the bed shows through), deeper and darker mid-stream.
+        float deep = smoothstep(0.1, 1.3, depth);
+        diffuseColor.rgb = mix(uShallowColor, diffuseColor.rgb, deep);
+        diffuseColor.a *= mix(0.45, 0.92, deep) * smoothstep(0.0, 0.3, shore);
         vec2 along = length(vFlow) > 0.01 ? normalize(vFlow) : vec2(1.0, 0.0);
         vec2 across = vec2(-along.y, along.x);
         vec2 q = vRiver;
-        float streaks = aNoise(vec2(q.x * 0.35 - uTime * 2.2, q.y * 1.6)) * 0.6 + aNoise(vec2(q.x * 0.9 - uTime * 3.4, q.y * 3.5)) * 0.4;
-        float edgeFoam = (1.0 - smoothstep(-0.1, 0.25, depth)) * smoothstep(0.35, 0.7, aNoise(vWet.xz * 0.6 + vec2(uTime * 0.05, 0.0))) * 0.35;
-        float rapids = smoothstep(0.45, 0.75, streaks) * vFoam;
-        wetFoam = clamp(edgeFoam + rapids, 0.0, 1.0);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95), wetFoam);
-        diffuseColor.a = max(diffuseColor.a, wetFoam * 0.9);`,
+        // White water only where it really runs fast: fine streaks drawn out along the current.
+        float streak = aNoise(vec2(q.x * 0.45 - uTime * 2.4, q.y * 2.6)) * 0.65 + aNoise(vec2(q.x * 1.1 - uTime * 3.6, q.y * 5.5)) * 0.35;
+        float rapids = smoothstep(0.6, 0.85, streak) * vFoam * 0.7;
+        // A faint, broken line of froth where it laps the bank.
+        float lap = (1.0 - smoothstep(0.0, 0.18, shore)) * smoothstep(0.0, 0.05, shore) * smoothstep(0.45, 0.75, aNoise(vWet.xz * 1.3 + vec2(uTime * 0.08, 0.0))) * 0.4;
+        wetFoam = clamp(rapids + lap, 0.0, 1.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.95, 0.95), wetFoam);
+        diffuseColor.a = max(diffuseColor.a, wetFoam * 0.8 * smoothstep(0.0, 0.1, shore));`,
       )
       .replace(
         '#include <normal_fragment_begin>',
         `#include <normal_fragment_begin>
         float fade = 1.0 - smoothstep(30.0, 300.0, length(vViewPosition));
         float r0 = flowRipples(vRiver);
-        float ra = flowRipples(vRiver + vec2(0.3, 0.0));
-        float rc = flowRipples(vRiver + vec2(0.0, 0.3));
-        vec2 slope = (along * (ra - r0) + across * (rc - r0)) / 0.3 * 0.35 * fade; // back into world directions
+        float ra = flowRipples(vRiver + vec2(0.12, 0.0));
+        float rc = flowRipples(vRiver + vec2(0.0, 0.12));
+        vec2 slope = (along * (ra - r0) + across * (rc - r0)) / 0.12 * 0.16 * fade; // back into world directions (gentle: no big glints)
         vec3 rippled = normalize(vec3(-slope.x, 1.0, -slope.y));
         normal = normalize((viewMatrix * vec4(rippled, 0.0)).xyz);`,
       )
       .replace(
         '#include <opaque_fragment>',
-        `float glance = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 4.0) * uReflection * (1.0 - wetFoam);
+        `float glance = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 4.0) * uReflection * 0.8 * (1.0 - wetFoam);
         outgoingLight = mix(outgoingLight, uSkyColor, glance);
         diffuseColor.a = max(diffuseColor.a, glance);
         diffuseColor.a *= vFade;

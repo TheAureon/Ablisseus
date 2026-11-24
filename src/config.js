@@ -239,7 +239,7 @@ export const CONFIG = {
       meander: 7,
     },
   ],
-  riverLook: { color: '#2f6a74', shallowColor: '#79bfb0' },
+  riverLook: { color: '#2b5c62', shallowColor: '#86b8a6' }, // deep water, and over the shallows
 
   // ── Biomes ────────────────────────────────────────────────────────────────
   // Regions of the island, each with its own look. Add, remove or edit entries
