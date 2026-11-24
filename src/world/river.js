@@ -27,6 +27,7 @@ const index = new Map();
 const segs = [];
 const key = (cx, cz) => cx * 8192 + cz;
 const BANK_MAX = 45;
+const MESH_CELL = CONFIG.terrain.size / CONFIG.terrain.segments; // spacing of the ground mesh's points
 const LEDGE = 1.6; // dry ledge beside the water inside a tunnel (m)
 const SLOT_SPARE = 3; // the slot is cut this much wider than the tunnel, hidden inside its walls
 const SHELL = 8; // how far beyond the arch the tunnel's rock roof reaches either side
@@ -74,7 +75,8 @@ function nearest(x, z) {
 /** Low banks that keep a river in its bed where the land beside it is lower than the water (none once it's down at the sea). */
 function levee(h, edge, out, level) {
   const keep = smoothstep(CONFIG.water.level + 0.3, CONFIG.water.level + 1.2, level);
-  return Math.max(h, h + (edge - out * 0.25 - h) * keep);
+  const top = edge - Math.max(0, out - MESH_CELL * 1.6) * 0.25; // level for a mesh cell or so, then sloping away
+  return Math.max(h, h + (top - h) * keep);
 }
 
 /** Cuts the channel, and a valley or gorge for it, into the land. `h` is the ground before. */
@@ -553,9 +555,11 @@ function waterMaterial(heightTexture, uniforms, R) {
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-        // Depth from the channel's own shape (deepest mid-stream), which is finer than the height map.
-        float a = abs(vAcross) * 1.15;
-        float depth = uDepth * (1.0 - 0.7 * a * a) - 0.3 * smoothstep(0.9, 1.15, a);
+        // Depth over the ground as it is actually drawn (the same heights the ground mesh is built
+        // from), so the shoreline, shallows and edge foam sit exactly where water meets bank.
+        vec2 groundUv = vWet.xz / uTerrainSize + 0.5;
+        float ground = texture2D(uHeightMap, (groundUv * (uHeightTexels - 1.0) + 0.5) / uHeightTexels).r;
+        float depth = vWet.y - ground;
         float shallow = 1.0 - smoothstep(0.0, 1.4, depth);
         diffuseColor.rgb = mix(diffuseColor.rgb, uShallowColor, shallow * 0.75);
         diffuseColor.a *= mix(0.25, 1.0, smoothstep(0.0, 0.9, depth)) * smoothstep(-0.05, 0.03, depth);
@@ -634,7 +638,9 @@ export function createRiverWater(heightTexture) {
       const len = Math.hypot(dx, dz) || 1;
       dx *= p.flow / len; // (the way the water runs: away from the source)
       dz *= p.flow / len;
-      const w = p.hw * 1.15; // a little wider than the channel, tucking under the banks
+      // Wider than the channel by more than one ground-mesh cell, so the water's edge always runs
+      // under the bank as drawn (the mesh is too coarse to show a narrow channel's exact shape).
+      const w = p.hw + MESH_CELL * 1.3;
       const speed = 0.5 + Math.min(1.6, p.foam * 2 + p.hw * 0.05);
       for (const side of [-1, 1]) {
         positions.push(p.x - dz * w * side * p.flow, p.s + 0.02, p.z + dx * w * side * p.flow);
