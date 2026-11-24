@@ -229,7 +229,7 @@ export const CONFIG = {
       source: 3, // the waypoint it rises at; it runs away from there both ways
       tunnel: [0, 3], // waypoints between which it runs in a slot, roofed over where the land is high (a tunnel)
       halfWidth: [2, 6.5], // [at the source, furthest downstream]
-      depth: 1.3,
+      depth: 2.6, // metres of water mid-stream (you float from about 1.4 m, so it is swimmable)
       sink: 0.6,
       valley: 1.6,
       plain: 4,
