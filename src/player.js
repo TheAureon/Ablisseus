@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { heightAt, spawnPoint, terrainUniforms, swellAt } from './world/terrain.js';
 import { atmosphere } from './atmosphere.js';
-import { walkHeightAt, riverWaterAt, riverAt, tunnelBlocks } from './world/river.js';
+import { walkHeightAt, riverWaterAt, riverAt, tunnelBlocks, RIVER_SWELL } from './world/river.js';
 
 /** Where your feet rest: the ground, a bridge deck, or the hill over a tunnel (judged from where your feet were). */
 let feet = Infinity;
@@ -171,7 +171,8 @@ export function createPlayer(camera, canvas) {
     const riverLevel = riverWaterAt(position.x, position.z); // (a river's surface is calm, and above the sea)
     const inRiver = riverLevel > seaLevel;
     const depth = Math.max(0, (inRiver ? riverLevel : seaLevel) - ground); // metres of water here
-    const surface = inRiver ? riverLevel : seaLevel + swellAt(position.x, position.z, atmosphere.uTime.value) * 0.7; // you ride the swell
+    // You ride the swell, at sea or (a smaller one) on a river, just as the water's surface moves.
+    const surface = (inRiver ? riverLevel : seaLevel) + swellAt(position.x, position.z, atmosphere.uTime.value) * 0.7 * (inRiver ? RIVER_SWELL : 1);
     const floatY = surface - c.swimFloatDepth; // where your feet hang when floating
     const swimming = !airborne && floatY > ground;
     const swimSpeed = c.walkSpeed * c.swimFactor; // (read each frame, so the G panel's speed sliders apply)

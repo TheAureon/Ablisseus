@@ -18,7 +18,7 @@ import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOM
 import { createScatter, createPlacedProps, updateScatter, canopies } from './world/scatter.js';
 import { placeLandmarks, createLandmarks } from './world/landmarks.js';
 import { createTrails } from './world/trails.js';
-import { buildRivers, rivers, createRiverWater, createBridges, createTunnels, riverRocks, distanceToRiver } from './world/river.js';
+import { buildRivers, rivers, createRiverWater, createBridges, createTunnels, riverRocks, distanceToRiver, createSeaMask } from './world/river.js';
 import { createCampfires } from './world/campfire.js';
 import { createHorizon } from './world/horizon.js';
 import { nightGlowMaterials } from './placeholders.js';
@@ -89,7 +89,7 @@ const landmarks = placeLandmarks();
 const trails = createTrails(landmarks);
 const heightTexture = createHeightTexture();
 const hillShadows = new HillShadowBaker(renderer, heightTexture);
-const water = createWater(heightTexture);
+const water = createWater(heightTexture, createSeaMask());
 const scatter = createScatter(templates, trails); // (before the terrain, which shades the ground under the trees)
 scene.add(createTerrain(trails.texture, canopies), water, scatter, createLandmarks(templates, landmarks));
 if (tidePools.length) scene.add(createPlacedProps(templates.rockPool, 'rockPool', tidePools, { castShadow: false, drawDistance: 220 }));
@@ -353,7 +353,6 @@ renderer.setAnimationLoop(() => {
   if (!CONFIG.time.paused && !(title.active && !title.leaving)) live.time = (live.time + dt / CONFIG.time.dayLengthSeconds) % 1;
 
   player.update(dt);
-  riverWater.update(elapsed);
   updateTitle(dt, elapsed);
   body.update(dt, player.state);
   map.update(player.position, player.state.yaw);
@@ -422,6 +421,7 @@ renderer.setAnimationLoop(() => {
 
   waterColor.copy(water.userData.baseColor).lerp(sky.state.skyHorizon, CONFIG.water.skyTint);
   water.material.color.copy(waterColor);
+  riverWater.update(elapsed, waterColor); // (the river is the same water as the sea)
   // The sheet of water follows you (in whole steps, so its mesh doesn't shimmer)
   // and rises and falls with the tide.
   const tide = CONFIG.water.tide;

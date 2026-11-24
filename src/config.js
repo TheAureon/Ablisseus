@@ -223,23 +223,23 @@ export const CONFIG = {
   rivers: [
     {
       label: 'The Long River',
-      // From the sea cliff in the east, through the cape (in a tunnel), past
-      // its source, then west across the island to the sea.
-      points: [[850, -112], [790, -111], [745, -113], [700, -112], [630, -50], [545, 0], [455, 30], [360, 60], [270, 85], [180, 110], [100, 135], [35, 150], [-10, 160]],
-      source: 3, // the waypoint it rises at; it runs away from there both ways
-      tunnel: [0, 3], // waypoints between which it runs in a slot, roofed over where the land is high (a tunnel)
-      halfWidth: [2, 6.5], // [at the source, furthest downstream]
+      // It rises as a spring on a hillside in the west, tumbles down into the
+      // lowlands, winds slowly east across the island, cuts a gorge through
+      // the eastern highlands and leaves through a tunnel in the cape, out of
+      // the sea cliff into the ocean. Every step of the way is downhill.
+      points: [[205, 104], [270, 85], [360, 60], [455, 30], [545, 0], [630, -50], [700, -112], [745, -113], [790, -111], [850, -112]],
+      source: 0, // the waypoint it rises at
+      tunnel: [6, 9], // waypoints between which it runs in a slot, roofed over where the land is high (a tunnel)
+      halfWidth: [2.4, 5.5], // [at the source, at the mouth]
       depth: 2.6, // metres of water mid-stream (you float from about 1.4 m, so it is swimmable)
       sink: 0.6,
       valley: 1.6,
       plain: 4,
       spring: 0, // radius of a pool at the source (0 for none)
-      maxLevel: 18, // highest its water stands
-      smoothing: [2, 8], // how gently the level falls, [toward the first waypoint, toward the last] (more = longer, smoother runs; less = sharper falls)
+      smoothing: 8, // how gently the level falls (more = longer, smoother runs; less = sharper falls)
       meander: 12, // how far it wanders from the waypoint line (metres)
     },
   ],
-  riverLook: { color: '#2b5c62', shallowColor: '#86b8a6' }, // deep water, and over the shallows
 
   // ── Biomes ────────────────────────────────────────────────────────────────
   // Regions of the island, each with its own look. Add, remove or edit entries

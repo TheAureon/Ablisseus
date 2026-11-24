@@ -29,6 +29,8 @@ const key = (cx, cz) => cx * 8192 + cz;
 const BANK_MAX = 45;
 const MESH_CELL = CONFIG.terrain.size / CONFIG.terrain.segments; // spacing of the ground mesh's points
 const LEDGE = 1.6; // dry ledge beside the water inside a tunnel (m)
+/** How big the river's bob is, as a share of the sea's swell (the player rides the same). */
+export const RIVER_SWELL = 0.5;
 const SLOT_SPARE = 3; // the slot is cut this much wider than the tunnel, hidden inside its walls
 const SHELL = 8; // how far beyond the arch the tunnel's rock roof reaches either side
 
@@ -86,11 +88,8 @@ function carve(x, z, h) {
   if (!n.seg) return h;
   const { d, hw, s, depth } = n;
   if (d < hw) {
-    // A rounded bed, kept above even high tide inland: below sea level the sea's own surface
-    // would show through the river water (its shoreline froth drawn on the riverbed).
-    const sea = CONFIG.water.level;
-    const floor = s > sea + 0.8 ? sea + CONFIG.water.tide.range / 2 + 0.2 : -Infinity;
-    return Math.min(h, Math.max(floor, s - depth * (1 - 0.7 * (d / hw) ** 2)));
+    // A rounded bed. (It may go below sea level: the sea is hidden inside river channels, see seaMask.)
+    return Math.min(h, s - depth * (1 - 0.7 * (d / hw) ** 2));
   }
   const edge = s + 0.3;
   if (n.seg.tunnel) {
@@ -230,6 +229,10 @@ export function buildRivers() {
       // Never the same width for long: pools and narrows.
       p.hw = (def.halfWidth[0] + (def.halfWidth[1] - def.halfWidth[0]) * t) * Math.max(0.8, 1 + 0.3 * noise2(p.along * 0.017, 9) + 0.08 * noise2(p.along * 0.045, 29));
       p.depth = def.depth;
+      // A spring with no pool seeps out as a trickle and only widens as it goes.
+      const fromSource = Math.abs(p.along - pts[top].along);
+      p.head = def.spring ? 1 : smoothstep(0, 30, fromSource);
+      p.hw *= 0.45 + 0.55 * p.head;
       p.flow = i < top ? -1 : 1; // +1: toward the last waypoint, -1: toward the first
       const q = pts[Math.min(pts.length - 1, Math.max(0, i + p.flow))];
       drops.push(Math.max(0, p.s - q.s) / (Math.hypot(q.x - p.x, q.z - p.z) || 1));
@@ -300,6 +303,20 @@ export function riverRocks(avoid = []) {
   const rocks = [];
   for (const river of rivers) {
     const pts = river.points;
+    // A spring wells up among a heap of boulders.
+    if (!river.spring) {
+      const src = pts[river.source];
+      const next = pts[Math.min(pts.length - 1, river.source + 2)];
+      const back = Math.atan2(src.z - next.z, src.x - next.x); // (uphill, away from where it runs)
+      for (let k = 0; k < 9; k++) {
+        const a = back + (rand() - 0.5) * 2.6;
+        const r = 1.5 + rand() * 3.5;
+        const x = src.x + Math.cos(a) * r;
+        const z = src.z + Math.sin(a) * r;
+        const scale = 0.6 + rand() * 1.3;
+        rocks.push({ x, z, y: heightAt(x, z) - 0.25 * scale, scale, rotation: rand() * 6.28, tilt: (rand() - 0.5) * 0.6 });
+      }
+    }
     for (let i = 2; i < pts.length - 2; i += 2) {
       const p = pts[i];
       if (p.tunnel || p.s <= CONFIG.water.level + 0.3) continue;
@@ -328,6 +345,36 @@ export function riverRocks(avoid = []) {
     }
   }
   return rocks;
+}
+
+/**
+ * Where the sea's surface must not be drawn: inside river channels above sea level, whose beds
+ * dip below it (or the flat sea would show through the river). One value per ground-mesh point.
+ */
+export function createSeaMask() {
+  const cells = CONFIG.terrain.segments;
+  const res = cells + 1;
+  const size = CONFIG.terrain.size;
+  const sea = CONFIG.water.level + CONFIG.water.tide.range / 2;
+  const raw = new Uint8Array(res * res);
+  for (let j = 0; j < res; j++) {
+    for (let i = 0; i < res; i++) {
+      const n = nearest((i / cells - 0.5) * size, (j / cells - 0.5) * size);
+      if (n.seg && n.s > sea + 0.25 && n.d < n.hw + MESH_CELL * 2) raw[j * res + i] = 1;
+    }
+  }
+  const data = new Uint8Array(res * res);
+  for (let j = 1; j < res - 1; j++) {
+    for (let i = 1; i < res - 1; i++) {
+      let on = 0; // (one point wider all round, so the blend between points stays inside the river)
+      for (let dj = -1; dj <= 1 && !on; dj++) for (let di = -1; di <= 1 && !on; di++) on = raw[(j + dj) * res + i + di];
+      data[j * res + i] = on ? 255 : 0;
+    }
+  }
+  const texture = new THREE.DataTexture(data, res, res, THREE.RedFormat, THREE.UnsignedByteType);
+  texture.minFilter = texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 // ── Tunnels ─────────────────────────────────────────────────────────────────
@@ -605,97 +652,146 @@ export function createBridges(bridges) {
 
 
 // ── The water ───────────────────────────────────────────────────────────────
-/** The material for the river: clear in the shallows, rippling and foaming with the flow. */
-function waterMaterial(heightTexture, uniforms, R) {
+/**
+ * The river's water: the sea's own water (its colours, clarity, ripples, sun
+ * glitter, sky reflection and lace of foam at the edge), only small, calm and
+ * carried along by the current, with white water where it runs steep.
+ */
+function waterMaterial(heightTexture, uniforms) {
   const w = CONFIG.water;
-  const material = new THREE.MeshStandardMaterial({ color: R.color, transparent: true, opacity: 0.88, roughness: 0.2, metalness: 0.05, depthWrite: false });
+  Object.assign(uniforms, {
+    uHeightMap: { value: heightTexture },
+    uTerrainSize: { value: CONFIG.terrain.size },
+    uHeightTexels: { value: heightTexture.image.width },
+    uShallowColor: { value: new THREE.Color(w.shallowColor) },
+    uShallowDepth: { value: w.shallowDepth },
+    uFoam: { value: w.foam },
+    uReflection: { value: w.reflection },
+    uGlitter: { value: w.glitter },
+    uRipple: { value: w.waves.ripple },
+    uWaveHeight: { value: w.waves.height },
+    uWaveLength: { value: w.waves.length },
+    uWaveSpeed: { value: w.waves.speed },
+  });
+  const material = new THREE.MeshStandardMaterial({ color: w.color, transparent: true, opacity: w.opacity, roughness: 0.16, metalness: 0.1, depthWrite: false });
+  // The sea's swell, kept small on a river (a bob, not waves).
+  const swell = /* glsl */ `
+    uniform float uTime;
+    uniform float uWaveLength;
+    uniform float uWaveSpeed;
+    float swell(vec2 p) {
+      float k = 6.2831 / uWaveLength;
+      float t = uTime * uWaveSpeed;
+      return sin(dot(p, vec2(0.80, 0.60)) * k + t * 1.00) * 0.50
+           + sin(dot(p, vec2(-0.45, 0.89)) * k * 1.7 + t * 1.31) * 0.30
+           + sin(dot(p, vec2(0.95, -0.31)) * k * 2.9 + t * 1.83) * 0.20;
+    }`;
   material.onBeforeCompile = (shader) => {
     applyAtmosphere(shader);
-    Object.assign(shader.uniforms, uniforms, {
-      uHeightMap: { value: heightTexture },
-      uTerrainSize: { value: CONFIG.terrain.size },
-      uHeightTexels: { value: heightTexture.image.width },
-      uShallowColor: { value: new THREE.Color(R.shallowColor) },
-      uReflection: { value: w.reflection * 0.8 },
-      uDepth: { value: R.depth },
-    });
+    Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 aFlow;\nattribute vec2 aRiver;\nvarying vec2 vRiver;\nattribute float aFoam;\nattribute float aAcross;\nattribute float aFade;\nvarying float vFade;\nvarying float vAcross;\nvarying vec3 vWet;\nvarying vec2 vFlow;\nvarying float vFoam;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWet = (modelMatrix * vec4(position, 1.0)).xyz;\nvFlow = aFlow;\nvRiver = aRiver;\nvFoam = aFoam;\nvAcross = aAcross;\nvFade = aFade;');
+      .replace(
+        '#include <common>',
+        `#include <common>
+        ${swell}
+        uniform float uWaveHeight;
+        attribute vec2 aFlow;
+        attribute vec2 aRiver;
+        attribute float aFoam;
+        attribute float aFade;
+        varying vec3 vWet;
+        varying vec2 vFlow;
+        varying vec2 vRiver;
+        varying float vFoam;
+        varying float vFade;`,
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vec3 wetWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+        transformed.y += swell(wetWorld.xz) * uWaveHeight * ${RIVER_SWELL.toFixed(2)};
+        vWet = vec3(wetWorld.x, wetWorld.y + transformed.y - position.y, wetWorld.z);
+        vFlow = aFlow;
+        vRiver = aRiver;
+        vFoam = aFoam;
+        vFade = aFade;`,
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
-        uniform float uTime;
+        ${swell}
         uniform sampler2D uHeightMap;
         uniform float uTerrainSize;
         uniform float uHeightTexels;
         uniform vec3 uShallowColor;
+        uniform float uShallowDepth;
+        uniform float uFoam;
         uniform vec3 uSkyColor;
         uniform float uReflection;
+        uniform float uGlitter;
+        uniform float uRipple;
         varying vec3 vWet;
         varying vec2 vFlow;
         varying vec2 vRiver; // metres along the river (increasing downstream) and across it
         varying float vFoam;
-        varying float vAcross;
         varying float vFade;
-        uniform float uDepth;
-        float wetFoam = 0.0;
+        float waterFoam = 0.0;
         ${NOISE_GLSL}
-        // Ripples carried along by the current: drawn in the river's own along/across metres,
-        // scrolled downstream at one steady speed, so the pattern never shears or creases.
-        // Small, layered and a little stretched along the current, like real moving water
-        // (no big round cells): each layer drifts at its own pace.
-        float flowRipples(vec2 p) {
-          vec2 q = vec2(p.x * 0.7, p.y);
-          return aNoise(q * 1.6 - vec2(uTime * 1.1, 0.0)) * 0.45
-               + aNoise(q * 3.7 - vec2(uTime * 1.6, 0.0) + 7.0) * 0.35
-               + aNoise(q * 8.3 - vec2(uTime * 2.3, 0.0) + 19.0) * 0.2;
+        // The sea's surface detail (its swell, small here, and two layers of drifting ripples),
+        // drawn in the river's own along/across metres so the ripples ride downstream with the current.
+        float surface(vec2 world, vec2 q) {
+          return swell(world) * 0.35 * ${RIVER_SWELL.toFixed(2)}
+               + (aNoise(q * 0.55 - vec2(uTime * 0.9, uTime * 0.05)) + aNoise(q * 1.7 - vec2(uTime * 1.4, -uTime * 0.1)) * 0.5) * 0.4;
         }`,
       )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-        // Depth over the ground as it is actually drawn (the same heights the ground mesh is built
-        // from), so the shoreline, shallows and edge foam sit exactly where water meets bank.
+        // How deep is the water here? (over the ground as it is drawn)
         vec2 groundUv = vWet.xz / uTerrainSize + 0.5;
         float ground = texture2D(uHeightMap, (groundUv * (uHeightTexels - 1.0) + 0.5) / uHeightTexels).r;
         float depth = vWet.y - ground;
-        // A wavering shoreline, so it doesn't follow the straight edges of the ground's triangles.
-        float shore = depth + (aNoise(vWet.xz * 0.9) - 0.5) * 0.3 + (aNoise(vWet.xz * 2.7 + 5.0) - 0.5) * 0.12;
-        // Colour: clear and pale over the shallows (the bed shows through), deeper and darker mid-stream.
-        float deep = smoothstep(0.1, 1.3, depth);
-        diffuseColor.rgb = mix(uShallowColor, diffuseColor.rgb, deep);
-        diffuseColor.a *= mix(0.45, 0.92, deep) * smoothstep(0.0, 0.3, shore);
-        vec2 along = length(vFlow) > 0.01 ? normalize(vFlow) : vec2(1.0, 0.0);
-        vec2 across = vec2(-along.y, along.x);
+        // Shallows: pale and clear enough to see the bed through (just as the sea's).
+        float shallow = 1.0 - smoothstep(0.0, uShallowDepth, depth);
+        diffuseColor.rgb = mix(diffuseColor.rgb, uShallowColor, shallow * 0.8);
+        diffuseColor.a = mix(0.12, diffuseColor.a, smoothstep(0.0, uShallowDepth * 0.7, depth)) * smoothstep(-0.08, 0.0, depth);
+        // Foam: the sea's broken lace right at the edge, and white water where the river runs steep.
+        float lace = aNoise(vWet.xz * 1.6 + uTime * 0.25) * 0.6 + aNoise(vWet.xz * 4.3 - uTime * 0.4) * 0.4;
+        float edge = 1.0 - smoothstep(0.0, 0.03 + lace * 0.1, depth);
         vec2 q = vRiver;
-        // White water only where it really runs fast: fine streaks drawn out along the current.
         float streak = aNoise(vec2(q.x * 0.45 - uTime * 2.4, q.y * 2.6)) * 0.65 + aNoise(vec2(q.x * 1.1 - uTime * 3.6, q.y * 5.5)) * 0.35;
-        float rapids = smoothstep(0.6, 0.85, streak) * vFoam * 0.7;
-        // A faint, broken line of froth where it laps the bank.
-        float lap = (1.0 - smoothstep(0.0, 0.18, shore)) * smoothstep(0.0, 0.05, shore) * smoothstep(0.45, 0.75, aNoise(vWet.xz * 1.3 + vec2(uTime * 0.08, 0.0))) * 0.4;
-        wetFoam = clamp(rapids + lap, 0.0, 1.0);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.95, 0.95), wetFoam);
-        diffuseColor.a = max(diffuseColor.a, wetFoam * 0.8 * smoothstep(0.0, 0.1, shore));`,
+        float rapids = smoothstep(0.6, 0.85, streak) * vFoam * 0.8;
+        float foam = clamp(edge * 0.9 + rapids, 0.0, 1.0) * uFoam * smoothstep(-0.08, -0.02, depth);
+        waterFoam = foam;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), foam);
+        diffuseColor.a = max(diffuseColor.a, foam * 0.92);
+        diffuseColor.a *= vFade;`,
       )
       .replace(
         '#include <normal_fragment_begin>',
         `#include <normal_fragment_begin>
-        float fade = 1.0 - smoothstep(30.0, 300.0, length(vViewPosition));
-        float r0 = flowRipples(vRiver);
-        float ra = flowRipples(vRiver + vec2(0.12, 0.0));
-        float rc = flowRipples(vRiver + vec2(0.0, 0.12));
-        vec2 slope = (along * (ra - r0) + across * (rc - r0)) / 0.12 * 0.16 * fade; // back into world directions (gentle: no big glints)
+        // Light the surface as if it were rippled (as the sea does), the detail fading with distance.
+        vec2 along = length(vFlow) > 0.01 ? normalize(vFlow) : vec2(1.0, 0.0);
+        vec2 across = vec2(-along.y, along.x);
+        float rippleFade = uRipple * (1.0 - smoothstep(60.0, 700.0, distance(vWet.xz, cameraPosition.xz)));
+        float s0 = surface(vWet.xz, vRiver);
+        float sa = surface(vWet.xz + along * 0.4, vRiver + vec2(0.4, 0.0));
+        float sc = surface(vWet.xz + across * 0.4, vRiver + vec2(0.0, 0.4));
+        vec2 slope = (along * (sa - s0) + across * (sc - s0)) / 0.4 * rippleFade;
         vec3 rippled = normalize(vec3(-slope.x, 1.0, -slope.y));
         normal = normalize((viewMatrix * vec4(rippled, 0.0)).xyz);`,
       )
       .replace(
         '#include <opaque_fragment>',
-        `float glance = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 4.0) * uReflection * 0.8 * (1.0 - wetFoam);
+        `float glance = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 4.0) * uReflection * (1.0 - waterFoam);
         outgoingLight = mix(outgoingLight, uSkyColor, glance);
-        diffuseColor.a = max(diffuseColor.a, glance);
-        diffuseColor.a *= vFade;
+        diffuseColor.a = max(diffuseColor.a, glance * vFade);
+        // Glitter: here and there a ripple throws the sun straight back at you.
+        vec3 sunView = (viewMatrix * vec4(uFogSunDir, 0.0)).xyz;
+        float mirror = pow(max(dot(reflect(-normalize(vViewPosition), normal), sunView), 0.0), 18.0);
+        float spark = smoothstep(0.78, 0.95, aNoise(vWet.xz * 7.0 + vec2(uTime * 1.7, -uTime * 1.1)) * 0.6 + aNoise(vWet.xz * 19.0 - uTime * 2.3) * 0.4);
+        outgoingLight += uFogSunColor * mirror * spark * 40.0 * uGlitter * (1.0 - waterFoam) * atmoCloudLight();
         #include <opaque_fragment>`,
       );
   };
@@ -729,6 +825,7 @@ export function createRiverWater(heightTexture) {
     const FADE = 22;
     // (only where it's down near the sea's level: a waterfall into the sea stays in full view)
     const fadeAt = (p) =>
+      smoothstep(0, 0.45, p.head) * // (water welling up out of the ground at a spring)
       Math.max(
         smoothstep(0.3, 1.5, p.s - CONFIG.water.level),
         (atSea(all[lo]) ? smoothstep(0, FADE, p.along - all[lo].along) : 1) * (atSea(all[hi]) ? smoothstep(0, FADE, all[hi].along - p.along) : 1),
@@ -745,7 +842,7 @@ export function createRiverWater(heightTexture) {
       dz *= p.flow / len;
       // Wider than the channel by more than one ground-mesh cell, so the water's edge always runs
       // under the bank as drawn (the mesh is too coarse to show a narrow channel's exact shape).
-      const w = p.hw + MESH_CELL * 1.3;
+      const w = p.hw + MESH_CELL * 1.3 * (0.35 + 0.65 * p.head); // (narrow where a spring seeps out)
       const speed = 0.5 + Math.min(1.6, p.foam * 2 + p.hw * 0.05);
       for (const side of [-1, 1]) {
         positions.push(p.x - dz * w * side * p.flow, p.s + 0.02, p.z + dx * w * side * p.flow);
@@ -793,10 +890,18 @@ export function createRiverWater(heightTexture) {
   geo.setAttribute('aFade', new THREE.Float32BufferAttribute(fades, 1));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, waterMaterial(heightTexture, uniforms, { ...CONFIG.riverLook, depth: CONFIG.rivers[0]?.depth ?? 1.3 }));
+  const mesh = new THREE.Mesh(geo, waterMaterial(heightTexture, uniforms));
   mesh.frustumCulled = false;
   mesh.renderOrder = 1;
   mesh.receiveShadow = true;
   group.add(mesh);
-  return { object: group, update: (time) => (uniforms.uTime.value = time) };
+  return {
+    object: group,
+    /** Each frame: the time, and the sea's colour (so the river matches it at every hour). */
+    update(time, seaColor) {
+      uniforms.uTime.value = time;
+      uniforms.uWaveHeight.value = CONFIG.water.waves.height;
+      if (seaColor) mesh.material.color.copy(seaColor);
+    },
+  };
 }

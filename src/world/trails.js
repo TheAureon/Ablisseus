@@ -116,7 +116,7 @@ export function createTrails(landmarks) {
     if (riverAt(nodeX(i), nodeZ(i), 1.5)) riverNode[i] = 1;
     if (tunnelAt(nodeX(i), nodeZ(i))) tunnelNode[i] = 1;
   }
-  const dry = (i) => heights[i] > water + 0.7 && !tunnelNode[i];
+  const dry = (i) => (heights[i] > water + 0.7 || riverNode[i]) && !tunnelNode[i]; // (a riverbed may dip below the sea's level)
 
   const onTrail = new Uint8Array(N * N); // cells a path already uses
   const beside = new Uint8Array(N * N); // cells right next to a path

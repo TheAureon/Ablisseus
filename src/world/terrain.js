@@ -720,7 +720,8 @@ export function swellAt(x, z, time) {
  *   - shallows are clear and pale; foam laces the edge and rolls in in sets
  * Its `userData.uniforms` are updated from main.js every frame.
  */
-export function createWater(heightTexture) {
+/** @param riverMask optional texture (from river.js): where rivers run, the sea's surface is not drawn */
+export function createWater(heightTexture, riverMask = null) {
   const w = CONFIG.water;
 
   // One sheet centred on the camera: finely divided nearby, where the swell is
@@ -751,7 +752,9 @@ export function createWater(heightTexture) {
     uFoam: { value: w.foam },
     uReflection: { value: w.reflection },
     uGlitter: { value: w.glitter },
+    uRiverMask: { value: riverMask ?? new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat) },
   };
+  uniforms.uRiverMask.value.needsUpdate = true;
 
   const material = new THREE.MeshStandardMaterial({ color: w.color, transparent: true, opacity: w.opacity, roughness: 0.16, metalness: 0.1 });
   const waveFunction = /* glsl */ `
@@ -797,7 +800,9 @@ export function createWater(heightTexture) {
         uniform vec3 uSkyColor;
         uniform float uReflection;
         uniform float uGlitter;
+        uniform sampler2D uRiverMask;
         float waterFoam = 0.0;
+        float seaShown = 1.0;
         ${NOISE_GLSL}
         float wNoise(vec2 p) { return aNoise(p); }
         // Surface detail used for lighting: the swell plus two layers of drifting ripples.
@@ -826,7 +831,10 @@ export function createWater(heightTexture) {
         float edge = 1.0 - smoothstep(0.0, 0.03 + lace * 0.1, depth);
         float sets = sin(depth * 6.5 + uTime * 1.3 + wNoise(vWater.xz * 0.12) * 6.0);
         float rollers = smoothstep(0.82, 1.0, sets) * smoothstep(0.03, 0.18, depth) * (1.0 - smoothstep(0.5, 1.5, depth)) * smoothstep(0.35, 0.7, lace);
-        float foam = clamp(edge * 0.9 + rollers * 0.75, 0.0, 1.0) * uFoam * smoothstep(-0.08, -0.02, depth);
+        // (not inside a river channel: the river's own water is there)
+        seaShown = 1.0 - texture2D(uRiverMask, (groundUv * (uHeightTexels - 1.0) + 0.5) / uHeightTexels).r * inside;
+        diffuseColor.a *= seaShown;
+        float foam = clamp(edge * 0.9 + rollers * 0.75, 0.0, 1.0) * uFoam * smoothstep(-0.08, -0.02, depth) * seaShown;
         waterFoam = foam;
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), foam);
         diffuseColor.a = max(diffuseColor.a, foam * 0.92);`,
@@ -847,10 +855,10 @@ export function createWater(heightTexture) {
         '#include <opaque_fragment>',
         `float glance = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 4.0) * uReflection * (1.0 - waterFoam);
         outgoingLight = mix(outgoingLight, uSkyColor, glance);
-        diffuseColor.a = max(diffuseColor.a, glance);
+        diffuseColor.a = max(diffuseColor.a, glance * seaShown);
         // Glitter: here and there a ripple throws the sun straight back at you.
         vec3 sunView = (viewMatrix * vec4(uFogSunDir, 0.0)).xyz;
-        float mirror = pow(max(dot(reflect(-normalize(vViewPosition), normal), sunView), 0.0), 18.0);
+        float mirror = pow(max(dot(reflect(-normalize(vViewPosition), normal), sunView), 0.0), 18.0) * seaShown;
         float spark = smoothstep(0.78, 0.95, aNoise(vWater.xz * 7.0 + vec2(uTime * 1.7, -uTime * 1.1)) * 0.6 + aNoise(vWater.xz * 19.0 - uTime * 2.3) * 0.4);
         outgoingLight += uFogSunColor * mirror * spark * 40.0 * uGlitter * (1.0 - waterFoam) * atmoCloudLight();
         #include <opaque_fragment>`,
