@@ -236,7 +236,7 @@ export const CONFIG = {
       spring: 0, // radius of a pool at the source (0 for none)
       maxLevel: 18, // highest its water stands
       smoothing: [2, 8], // how gently the level falls, [toward the first waypoint, toward the last] (more = longer, smoother runs; less = sharper falls)
-      meander: 7,
+      meander: 12, // how far it wanders from the waypoint line (metres)
     },
   ],
   riverLook: { color: '#2b5c62', shallowColor: '#86b8a6' }, // deep water, and over the shallows

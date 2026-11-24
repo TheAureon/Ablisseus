@@ -85,6 +85,7 @@ export const ASSETS = {
   driftwood:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.driftwood },
   starfish:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.starfish },
   pebble:       { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rock('#9b958c') },
+  riverRock:    { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: () => placeholders.rock('#6b6a64') }, // boulders in and along rivers
   rockPool:     { model: null, scale: 1, yOffset: 0, rotation: [0, 0, 0], placeholder: placeholders.rockPool }, // a tide pool; placed on rock shelves, see CONFIG.tidePools
 
   // Trail furniture (placed automatically along the paths, see CONFIG.trails)

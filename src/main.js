@@ -18,7 +18,7 @@ import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOM
 import { createScatter, createPlacedProps, updateScatter, canopies } from './world/scatter.js';
 import { placeLandmarks, createLandmarks } from './world/landmarks.js';
 import { createTrails } from './world/trails.js';
-import { buildRivers, rivers, createRiverWater, createBridges, createTunnels, distanceToRiver } from './world/river.js';
+import { buildRivers, rivers, createRiverWater, createBridges, createTunnels, riverRocks, distanceToRiver } from './world/river.js';
 import { createCampfires } from './world/campfire.js';
 import { createHorizon } from './world/horizon.js';
 import { nightGlowMaterials } from './placeholders.js';
@@ -98,6 +98,8 @@ for (const [asset, placements] of Object.entries(trails.props)) {
 }
 const riverWater = createRiverWater(heightTexture);
 scene.add(riverWater.object, createBridges(trails.bridges), createTunnels());
+const bridgeMids = trails.bridges.map((b) => ({ x: (b.ax + b.bx) / 2, z: (b.az + b.bz) / 2 }));
+scene.add(createPlacedProps(templates.riverRock, 'riverRock', riverRocks(bridgeMids), { drawDistance: 260 }));
 const campfires = createCampfires(templates.campfire, trails.campfires);
 scene.add(campfires.object);
 

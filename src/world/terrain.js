@@ -278,6 +278,16 @@ export const terrainUniforms = { uSeaLevel: { value: CONFIG.water.level } };
 
 let colorCache = null;
 let groundMaterial = null;
+let groundTint = null;
+let localWater = null;
+/** Lets river.js say where its water stands (so the riverbed's light ripples match the river, not the sea). */
+export function setLocalWater(fn) {
+  localWater = fn;
+}
+/** Lets river.js colour the ground along its banks. */
+export function setGroundTint(fn) {
+  groundTint = fn;
+}
 /** The ground's own material (made by createTerrain), for other meshes that should look like the ground. */
 export const terrainMaterial = () => groundMaterial;
 /** The ground's colour at (x, z), height y, on ground this steep (0 flat … 1 sheer). */
@@ -299,6 +309,7 @@ export function groundColorAt(x, z, y, steep, out) {
     const d = Math.hypot(x - shelf.x, z - shelf.z);
     if (d < shelf.radius * 1.6) out.lerp(col.shelf, 1 - smoothstep(shelf.radius * 0.9, shelf.radius * 1.6, d));
   }
+  if (groundTint) groundTint(x, z, y, out); // (river banks: wet gravel and mud, from river.js)
   return out;
 }
 
@@ -367,8 +378,8 @@ export function createTerrain(pathTexture = null, canopies = []) {
     shader.uniforms.uWetReach = { value: c.beach.wetReach };
     shader.uniforms.uBeachTop = { value: CONFIG.water.level + c.sandHeight * 1.5 };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nattribute float aOcclusion;\nvarying float vOcclusion;\nvarying vec3 vNormalWorld;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvOcclusion = aOcclusion;\nvNormalWorld = normal;\nvPathUv = position.xz / uTerrainSize + 0.5;');
+      .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nattribute float aOcclusion;\nattribute float aWaterLevel;\nvarying float vWaterLevel;\nvarying float vOcclusion;\nvarying vec3 vNormalWorld;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvOcclusion = aOcclusion;\nvWaterLevel = aWaterLevel;\nvNormalWorld = normal;\nvPathUv = position.xz / uTerrainSize + 0.5;');
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -382,6 +393,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
         varying vec2 vPathUv;
         varying vec3 vGround;
         varying float vOcclusion;
+        varying float vWaterLevel;
         varying vec3 vNormalWorld;
         uniform float uTime;
         uniform float uCaustics;
@@ -464,13 +476,15 @@ export function createTerrain(pathTexture = null, canopies = []) {
         }
 
         // Under water: ripples of light dance across the bottom in the shallows.
-        float under = uSeaLevel - vGround.y;
+        // (in a river: its own level, and only faintly — river water is seldom still and clear enough for a bright web)
+        float inRiver = step(uSeaLevel + 0.05, vWaterLevel);
+        float under = max(uSeaLevel, vWaterLevel) - vGround.y;
         if (under > 0.0 && uCaustics > 0.0) {
           vec2 cp = vGroundXZ * 0.55;
           float c1 = aNoise(cp + vec2(uTime * 0.28, uTime * 0.17));
           float c2 = aNoise(cp * 1.31 - vec2(uTime * 0.22, uTime * 0.31) + 11.0);
           float web = pow(1.0 - abs(c1 - c2), 9.0);
-          diffuseColor.rgb *= 1.0 + web * uCaustics * smoothstep(0.0, 0.25, under) * (1.0 - smoothstep(1.2, 3.5, under)) * 1.6;
+          diffuseColor.rgb *= 1.0 + web * uCaustics * smoothstep(0.0, 0.25, under) * (1.0 - smoothstep(1.2, 3.5, under)) * 1.6 * (1.0 - 0.8 * inRiver);
         }`,
       )
       // Roughen the surface: lean the shading normal by the slope of the fine bumps, fading out with distance.
@@ -580,6 +594,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
       const tileNormals = new Float32Array(positions.length);
       const tileColors = new Float32Array(positions.length);
       const tileOcclusion = new Float32Array(positions.length / 3);
+      const tileWater = new Float32Array(positions.length / 3).fill(-100); // a river's level here (-100: none)
       let highest = -Infinity;
       for (let j = 0; j <= h; j++) {
         for (let i = 0; i <= w; i++) {
@@ -594,6 +609,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
             tileColors[o + n] = colors[k * 3 + n];
           }
           tileOcclusion[o / 3] = occlusion[k];
+          if (localWater) tileWater[o / 3] = localWater(positions[o], positions[o + 2]);
         }
       }
       if (highest < water - 5) continue; // open sea
@@ -611,6 +627,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
       geo.setAttribute('normal', new THREE.BufferAttribute(tileNormals, 3));
       geo.setAttribute('color', new THREE.BufferAttribute(tileColors, 3));
       geo.setAttribute('aOcclusion', new THREE.BufferAttribute(tileOcclusion, 1));
+      geo.setAttribute('aWaterLevel', new THREE.BufferAttribute(tileWater, 1));
       geo.setIndex(index);
       const mesh = new THREE.Mesh(geo, material);
       mesh.receiveShadow = true;

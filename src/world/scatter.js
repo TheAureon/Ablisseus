@@ -237,8 +237,8 @@ export function createPlacedProps(template, name, placements, options = {}) {
 
   const cells = new Map();
   for (const p of placements) {
-    dummy.position.set(p.x, heightAt(p.x, p.z), p.z);
-    dummy.rotation.set(0, p.rotation ?? 0, 0);
+    dummy.position.set(p.x, p.y ?? heightAt(p.x, p.z), p.z); // (y: set height, e.g. a boulder half under water)
+    dummy.rotation.set(p.tilt ?? 0, p.rotation ?? 0, (p.tilt ?? 0) * 0.6);
     dummy.scale.setScalar(p.scale ?? 1);
     dummy.updateMatrix();
     const key = Math.floor(p.x / size) + ',' + Math.floor(p.z / size);

@@ -15,8 +15,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { applyAtmosphere, NOISE_GLSL } from '../atmosphere.js';
-import { groundBeforeRivers, heightAt, setCarver, groundColorAt, terrainMaterial } from './terrain.js';
-import { noise2, smoothstep } from './noise.js';
+import { groundBeforeRivers, heightAt, setCarver, groundColorAt, terrainMaterial, setGroundTint, setLocalWater } from './terrain.js';
+import { noise2, smoothstep, seededRandom } from './noise.js';
 
 /** The built rivers: [{ label, points: [{ x, z, s (water level), hw (half width), depth, foam }] }] */
 export const rivers = [];
@@ -45,7 +45,7 @@ function addSegment(seg) {
   }
 }
 
-const near = { seg: null, d: 0, t: 0, s: 0, hw: 0, depth: 0 };
+const near = { seg: null, d: 0, t: 0, s: 0, hw: 0, depth: 0, side: 1 };
 /** The closest stretch of river to (x, z), measured from its edge. */
 function nearest(x, z) {
   near.seg = null;
@@ -63,6 +63,7 @@ function nearest(x, z) {
       best = d - hw;
       near.seg = g;
       near.d = d;
+      near.side = Math.sign(ex * (z - g.az) - ez * (x - g.ax)) || 1; // which bank: +1 on the left looking from a to b
       near.t = t;
       near.hw = hw;
       near.s = g.sa + (g.sb - g.sa) * t;
@@ -84,7 +85,13 @@ function carve(x, z, h) {
   const n = nearest(x, z);
   if (!n.seg) return h;
   const { d, hw, s, depth } = n;
-  if (d < hw) return Math.min(h, s - depth * (1 - 0.7 * (d / hw) ** 2)); // a rounded bed
+  if (d < hw) {
+    // A rounded bed, kept above even high tide inland: below sea level the sea's own surface
+    // would show through the river water (its shoreline froth drawn on the riverbed).
+    const sea = CONFIG.water.level;
+    const floor = s > sea + 0.8 ? sea + CONFIG.water.tide.range / 2 + 0.2 : -Infinity;
+    return Math.min(h, Math.max(floor, s - depth * (1 - 0.7 * (d / hw) ** 2)));
+  }
   const edge = s + 0.3;
   if (n.seg.tunnel) {
     // A slot with a level ledge either side of the water and sheer walls (roofed over where it's a tunnel).
@@ -93,13 +100,22 @@ function carve(x, z, h) {
     return edge + (h - edge) * smoothstep(flat, flat + 2, d);
   }
   if (h >= edge) {
-    // A strip of level meadow along the water, then the valley side: the higher
-    // the land above the river, the wider the valley it has worn.
-    const plain = n.seg.plain + hw * 0.6;
-    const bank = Math.min(BANK_MAX, Math.max(3, (h - edge) * n.seg.valley));
-    if (d > hw + plain + bank) return h;
-    const k = smoothstep(hw + plain, hw + plain + bank, d);
-    return edge + 0.25 * smoothstep(hw, hw + plain, d) + (h - edge) * k * k * (2 - k); // (eased, so the valley floor is wide and the sides steepen)
+    // Banks as a river wears them: on the outside of a bend the current cuts a
+    // steep bank; on the inside it drops gravel in a low, shelving bar. Along
+    // straighter runs, something in between, never quite the same twice.
+    const inside = smoothstep(-0.02, 0.1, n.seg.bend * n.side); // 1 on the inside of a bend, 0 outside
+    const vary = noise2(x * 0.045 + 31, z * 0.045 - 17); // slow changes along the banks
+    const rough = noise2(x * 0.21, z * 0.21) * 0.9 + noise2(x * 0.55 + 4, z * 0.55) * 0.35; // ragged edges
+    const bar = Math.max(0.4, hw * (0.15 + 1.1 * inside) * (1 + 0.5 * vary) + n.seg.plain * 0.3 * inside);
+    const dd = d + rough * (0.5 + 0.8 * inside); // (so the bank line wanders)
+    const shore = edge + 0.55 * smoothstep(hw, hw + bar, dd) + 0.25 * (1 - inside) * smoothstep(hw, hw + 0.8, dd);
+    if (h <= shore) return h;
+    const bank = Math.min(BANK_MAX, Math.max(MESH_CELL, (h - shore) * n.seg.valley * (0.5 + 0.9 * inside) * (1 + 0.35 * vary)));
+    if (dd > hw + bar + bank) return h;
+    const k = smoothstep(hw + bar, hw + bar + bank, dd);
+    const cut = (1 - inside) * smoothstep(2.5, 4, hw); // (a cut bank rises steeply straight from the water; not on a stream too narrow to show it)
+    const shape = k + (Math.sqrt(k) - k) * cut;
+    return shore + (h - shore) * shape;
   }
   // Land lower than the water beside the river: low banks keep it in its bed.
   return levee(h, edge, d - hw, s);
@@ -154,7 +170,11 @@ export function buildRivers() {
       for (let d = 0; d < len; d += 3) course.push([ax + ((bx - ax) * d) / len, az + ((bz - az) * d) / len]);
     }
     course.push(smooth[smooth.length - 1]);
+    // (a tunnel runs fairly straight: little wander before the tunnel's far waypoint)
+    const [sx, sz] = def.points[def.tunnel ? def.tunnel[1] : 0];
+    const straightTo = def.tunnel ? course.reduce((b, c, i) => (Math.hypot(c[0] - sx, c[1] - sz) < Math.hypot(course[b][0] - sx, course[b][1] - sz) ? i : b), 0) : -1;
     let along = 0;
+    let straightAlong = 0;
     const pts = course.map(([x, z], i) => {
       const a = course[Math.max(0, i - 1)];
       const b = course[Math.min(course.length - 1, i + 1)];
@@ -162,7 +182,11 @@ export function buildRivers() {
       const dz = b[1] - a[1];
       const len = Math.hypot(dx, dz) || 1;
       if (i) along += Math.hypot(x - course[i - 1][0], z - course[i - 1][1]);
-      const wander = noise2(along * 0.012 + 50, 3) * def.meander * smoothstep(0, 40, along); // (none right at the first end)
+      if (i === straightTo) straightAlong = along;
+      // Loops of every size, like a real river's: a long slow swing with smaller wiggles on it.
+      const swing = noise2(along * 0.009 + 50, 3) + 0.35 * noise2(along * 0.021 + 11, 7);
+      const settle = i <= straightTo ? 0.15 : smoothstep(0, 40, along - straightAlong);
+      const wander = swing * def.meander * settle * smoothstep(0, 40, along); // (none right at the first end)
       return { x: x - (dz / len) * wander, z: z + (dx / len) * wander, along };
     });
     const closest = ([x, z]) => pts.reduce((best, p, i) => (Math.hypot(p.x - x, p.z - z) < Math.hypot(pts[best].x - x, pts[best].z - z) ? i : best), 0);
@@ -203,12 +227,22 @@ export function buildRivers() {
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
       const t = Math.abs(p.along - pts[top].along) / span;
-      p.hw = (def.halfWidth[0] + (def.halfWidth[1] - def.halfWidth[0]) * t) * (1 + 0.15 * noise2(p.along * 0.03, 9));
+      // Never the same width for long: pools and narrows.
+      p.hw = (def.halfWidth[0] + (def.halfWidth[1] - def.halfWidth[0]) * t) * Math.max(0.8, 1 + 0.3 * noise2(p.along * 0.017, 9) + 0.08 * noise2(p.along * 0.045, 29));
       p.depth = def.depth;
       p.flow = i < top ? -1 : 1; // +1: toward the last waypoint, -1: toward the first
       const q = pts[Math.min(pts.length - 1, Math.max(0, i + p.flow))];
       drops.push(Math.max(0, p.s - q.s) / (Math.hypot(q.x - p.x, q.z - p.z) || 1));
     }
+    // How sharply it bends here (signed: which side is the outside), for the shape of its banks.
+    const turn = pts.map((p, i) => {
+      const a = pts[Math.max(0, i - 3)];
+      const c = pts[Math.min(pts.length - 1, i + 3)];
+      const ux = p.x - a.x, uz = p.z - a.z, vx = c.x - p.x, vz = c.z - p.z;
+      const lu = Math.hypot(ux, uz) || 1, lv = Math.hypot(vx, vz) || 1;
+      return ((ux * vz - uz * vx) / (lu * lv)) * p.flow; // (in the downstream direction of travel… then made side-fixed below)
+    });
+    pts.forEach((p, i) => (p.bend = window(turn, i, (v) => v.reduce((a, b) => a + b, 0) / v.length) * p.flow));
     pts.forEach((p, i) => (p.foam = Math.min(1, Math.max(0, window(drops, i, (v) => v.reduce((a, b) => a + b, 0) / v.length) - 0.1) * 5)));
 
     // A tunnel along part of it (`tunnel: [from, to]` waypoints): roofed over wherever the land stands well above the water.
@@ -227,11 +261,73 @@ export function buildRivers() {
       const a = pts[i];
       const b = pts[i + 1];
       const tunnel = a.tunnel && b.tunnel;
-      addSegment({ ax: a.x, az: a.z, bx: b.x, bz: b.z, sa: a.s, sb: b.s, hwa: a.hw, hwb: b.hw, depth: a.depth, valley: def.valley, plain: tunnel ? 0 : def.plain ?? 4, tunnel, roof: a.roof && b.roof ? archOf(a) : null });
+      addSegment({ ax: a.x, az: a.z, bx: b.x, bz: b.z, sa: a.s, sb: b.s, hwa: a.hw, hwb: b.hw, depth: a.depth, valley: def.valley, plain: tunnel ? 0 : def.plain ?? 4, bend: (a.bend + b.bend) / 2, tunnel, roof: a.roof && b.roof ? archOf(a) : null });
     }
   }
   setCarver(carve);
+  setGroundTint(tintBanks);
+  setLocalWater((x, z) => {
+    const n = nearest(x, z);
+    return n.seg && n.d < n.hw + MESH_CELL * 1.5 ? n.s : -100;
+  });
   return rivers;
+}
+
+// ── Banks: colour and boulders ──────────────────────────────────────────────
+const WET = new THREE.Color('#5d5649'); // damp earth at the water's edge
+const GRAVEL = new THREE.Color('#8d8576'); // a gravel bar
+const BED = new THREE.Color('#6f6656'); // the riverbed, seen through the water
+const tintColor = new THREE.Color();
+function tintBanks(x, z, y, out) {
+  const n = nearest(x, z);
+  if (!n.seg || n.seg.roof) return;
+  const { d, hw, s } = n;
+  if (d < hw) {
+    out.lerp(BED, 0.75);
+    return;
+  }
+  const inside = smoothstep(-0.02, 0.1, n.seg.bend * n.side);
+  const reach = 1.2 + hw * (0.2 + 1.1 * inside);
+  const k = 1 - smoothstep(hw, hw + reach, d + noise2(x * 0.3, z * 0.3) * 0.8);
+  if (k <= 0 || y > s + 2.5) return;
+  tintColor.copy(WET).lerp(GRAVEL, inside * smoothstep(0.3, 0.6, noise2(x * 0.5 + 9, z * 0.5) * 0.5 + 0.5));
+  out.lerp(tintColor, k * 0.85);
+}
+
+/** Boulders: scattered through the rapids, half out of the water, and strewn along the banks. */
+export function riverRocks(avoid = []) {
+  const rand = seededRandom(7177);
+  const rocks = [];
+  for (const river of rivers) {
+    const pts = river.points;
+    for (let i = 2; i < pts.length - 2; i += 2) {
+      const p = pts[i];
+      if (p.tunnel || p.s <= CONFIG.water.level + 0.3) continue;
+      const q = pts[i + 1];
+      const len = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+      const nx = -(q.z - p.z) / len;
+      const nz = (q.x - p.x) / len;
+      const near = (x, z) => avoid.some((b) => Math.hypot(x - b.x, z - b.z) < 7);
+      // In the stream: mostly where it runs fast.
+      if (rand() < 0.04 + p.foam * 0.5) {
+        const u = (rand() * 2 - 1) * p.hw * 0.85;
+        const x = p.x + nx * u;
+        const z = p.z + nz * u;
+        const scale = 0.7 + rand() * (1 + p.foam);
+        if (!near(x, z)) rocks.push({ x, z, y: p.s - 0.35 * scale, scale, rotation: rand() * 6.28, tilt: (rand() - 0.5) * 0.5 });
+      }
+      // On the banks: in ones and twos at the water's edge.
+      for (const side of [-1, 1]) {
+        if (rand() > 0.22) continue;
+        const u = side * (p.hw * (0.85 + rand() * 0.4) + rand() * 1.5);
+        const x = p.x + nx * u;
+        const z = p.z + nz * u;
+        const scale = 0.35 + rand() * 0.8;
+        if (!near(x, z)) rocks.push({ x, z, y: Math.max(heightAt(x, z), p.s - 0.6 * scale) - 0.15 * scale, scale, rotation: rand() * 6.28, tilt: (rand() - 0.5) * 0.6 });
+      }
+    }
+  }
+  return rocks;
 }
 
 // ── Tunnels ─────────────────────────────────────────────────────────────────
@@ -369,6 +465,7 @@ export function createTunnels() {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geo.setAttribute('aOcclusion', new THREE.Float32BufferAttribute(occ, 1));
+    geo.setAttribute('aWaterLevel', new THREE.Float32BufferAttribute(new Array(occ.length).fill(-100), 1));
     geo.setIndex(index);
     geo.computeVertexNormals(); // (each piece on its own, so the edges between them stay crisp)
     return geo;
