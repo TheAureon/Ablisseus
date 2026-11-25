@@ -31,6 +31,8 @@ const MESH_CELL = CONFIG.terrain.size / CONFIG.terrain.segments; // spacing of t
 const LEDGE = 1.6; // dry ledge beside the water inside a tunnel (m)
 /** How big the river's bob is, as a share of the sea's swell (the player rides the same). */
 export const RIVER_SWELL = 0.5;
+/** Where a river's water stands this far above the sea or less, the sea is shown (the river fading out into it). */
+const SEA_SHOWS = CONFIG.water.tide.range / 2 + 0.25;
 const SLOT_SPARE = 3; // the slot is cut this much wider than the tunnel, hidden inside its walls
 const SHELL = 8; // how far beyond the arch the tunnel's rock roof reaches either side
 
@@ -86,7 +88,8 @@ function levee(h, edge, out, level) {
 function carve(x, z, h) {
   const n = nearest(x, z);
   if (!n.seg) return h;
-  const { d, hw, s, depth } = n;
+  const { d, s, depth } = n;
+  const hw = Math.max(n.hw, MESH_CELL * 1.1); // (never narrower than the ground mesh can show)
   if (d < hw) {
     // A rounded bed. (It may go below sea level: the sea is hidden inside river channels, see seaMask.)
     return Math.min(h, s - depth * (1 - 0.7 * (d / hw) ** 2));
@@ -355,22 +358,14 @@ export function createSeaMask() {
   const cells = CONFIG.terrain.segments;
   const res = cells + 1;
   const size = CONFIG.terrain.size;
-  const sea = CONFIG.water.level + CONFIG.water.tide.range / 2;
   const raw = new Uint8Array(res * res);
   for (let j = 0; j < res; j++) {
     for (let i = 0; i < res; i++) {
       const n = nearest((i / cells - 0.5) * size, (j / cells - 0.5) * size);
-      if (n.seg && n.s > sea + 0.25 && n.d < n.hw + MESH_CELL * 2) raw[j * res + i] = 1;
+      if (n.seg && n.s > CONFIG.water.level + SEA_SHOWS && n.d < n.hw + MESH_CELL * 2.5) raw[j * res + i] = 255;
     }
   }
-  const data = new Uint8Array(res * res);
-  for (let j = 1; j < res - 1; j++) {
-    for (let i = 1; i < res - 1; i++) {
-      let on = 0; // (one point wider all round, so the blend between points stays inside the river)
-      for (let dj = -1; dj <= 1 && !on; dj++) for (let di = -1; di <= 1 && !on; di++) on = raw[(j + dj) * res + i + di];
-      data[j * res + i] = on ? 255 : 0;
-    }
-  }
+  const data = raw;
   const texture = new THREE.DataTexture(data, res, res, THREE.RedFormat, THREE.UnsignedByteType);
   texture.minFilter = texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
@@ -488,21 +483,56 @@ export function createTunnels() {
     strip('topLine', (x, y, z) => groundColorAt(x, z, y, 0.1, color), 1, false);
     strip('arch', (x, y, z) => color.copy(rock).multiplyScalar(0.8 + 0.2 * noise2(x * 0.4, y * 0.4 + z * 0.4)), 0.35, true);
 
-    // A rock face round each end: from the hill's surface down to the arch.
-    for (const [sec, flip] of [[sections[0], true], [sections[sections.length - 1], false]]) {
-      const outline = [...sec.topLine, [sec.W, sec.floor - 0.6], ...sec.arch, [-sec.W, sec.floor - 0.6]];
+    // A rock face round each end, from the hill's surface down to the arch: not a flat
+    // wall but rough, jutting rock, in bands like the strata of a cliff.
+    const resample = (line, count) => {
+      const lengths = [0];
+      for (let k = 1; k < line.length; k++) lengths.push(lengths[k - 1] + Math.hypot(line[k][0] - line[k - 1][0], line[k][1] - line[k - 1][1]));
+      const total = lengths[lengths.length - 1];
+      const out = [];
+      for (let k = 0, seg = 0; k < count; k++) {
+        const want = (total * k) / (count - 1);
+        while (seg < line.length - 2 && lengths[seg + 1] < want) seg++;
+        const f = (want - lengths[seg]) / (lengths[seg + 1] - lengths[seg] || 1);
+        out.push([line[seg][0] + (line[seg + 1][0] - line[seg][0]) * f, line[seg][1] + (line[seg + 1][1] - line[seg][1]) * f]);
+      }
+      return out;
+    };
+    const ROUND = 56; // points round the face
+    const LAYERS = 7; // rings from the arch out to the face's edge
+    for (const [sec, outward] of [[sections[0], -1], [sections[sections.length - 1], 1]]) {
+      const outer = resample([[-sec.W, sec.floor - 0.6], ...sec.topLine, [sec.W, sec.floor - 0.6]], ROUND);
+      const inner = resample([[-sec.half, sec.floor - 0.6], ...[...sec.arch].reverse(), [sec.half, sec.floor - 0.6]], ROUND);
+      const fx = sec.nz; // along the tunnel
+      const fz = -sec.nx;
       const positions = [];
       const colors = [];
       const occ = [];
-      for (const point of outline) {
-        const [x, y, z] = at(sec, point);
-        positions.push(x, y, z);
-        color.copy(rock).multiplyScalar(0.75 + 0.25 * noise2(x * 0.3, y * 0.3 + z * 0.3));
-        colors.push(color.r, color.g, color.b);
-        occ.push(0.8);
+      for (let l = 0; l <= LAYERS; l++) {
+        const t = l / LAYERS;
+        for (let k = 0; k < ROUND; k++) {
+          const u = inner[k][0] + (outer[k][0] - inner[k][0]) * t;
+          const y = inner[k][1] + (outer[k][1] - inner[k][1]) * t;
+          const [x, , z] = at(sec, [u, y]);
+          // Juts and hollows, strongest mid-face, nothing at the edges (where it meets the arch and the hill).
+          const strata = noise2(u * 0.12 + 40, y * 0.55) * 1.6 + noise2(u * 0.4 - 7, y * 1.1 + 3) * 0.7 + noise2(u * 1.1, y * 1.6) * 0.3;
+          const o = (strata + 0.6) * Math.sin(Math.PI * t) * 1.5 * outward;
+          positions.push(x + fx * o, y, z + fz * o);
+          const band = 0.82 + 0.12 * noise2(y * 0.9 + 5, u * 0.05) + 0.1 * noise2(x * 0.5, y * 0.5 + z * 0.5);
+          color.copy(rock).multiplyScalar(band);
+          colors.push(color.r, color.g, color.b);
+          occ.push(0.55 + 0.4 * t);
+        }
       }
       const index = [];
-      for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(outline.map(([u, y]) => new THREE.Vector2(u, y)), [])) index.push(...(flip ? [a, b, c] : [a, c, b]));
+      for (let l = 0; l < LAYERS; l++) {
+        for (let k = 0; k < ROUND - 1; k++) {
+          const a = l * ROUND + k;
+          const b = a + ROUND;
+          if (outward > 0) index.push(a, a + 1, b, a + 1, b + 1, b);
+          else index.push(a, b, a + 1, a + 1, b, b + 1);
+        }
+      }
       parts.push(piece(positions, colors, occ, index));
     }
   }
@@ -672,6 +702,7 @@ function waterMaterial(heightTexture, uniforms) {
     uWaveHeight: { value: w.waves.height },
     uWaveLength: { value: w.waves.length },
     uWaveSpeed: { value: w.waves.speed },
+    uDepth: { value: CONFIG.rivers[0]?.depth ?? 2 },
   });
   const material = new THREE.MeshStandardMaterial({ color: w.color, transparent: true, opacity: w.opacity, roughness: 0.16, metalness: 0.1, depthWrite: false });
   // The sea's swell, kept small on a river (a bob, not waves).
@@ -697,6 +728,8 @@ function waterMaterial(heightTexture, uniforms) {
         uniform float uWaveHeight;
         attribute vec2 aFlow;
         attribute vec2 aRiver;
+        attribute float aAcross;
+        varying float vAcross;
         attribute float aFoam;
         attribute float aFade;
         varying vec3 vWet;
@@ -713,6 +746,7 @@ function waterMaterial(heightTexture, uniforms) {
         vWet = vec3(wetWorld.x, wetWorld.y + transformed.y - position.y, wetWorld.z);
         vFlow = aFlow;
         vRiver = aRiver;
+        vAcross = aAcross;
         vFoam = aFoam;
         vFade = aFade;`,
       );
@@ -734,6 +768,8 @@ function waterMaterial(heightTexture, uniforms) {
         varying vec3 vWet;
         varying vec2 vFlow;
         varying vec2 vRiver; // metres along the river (increasing downstream) and across it
+        varying float vAcross; // across the channel: 0 mid-stream, 1 at its edge
+        uniform float uDepth;
         varying float vFoam;
         varying float vFade;
         float waterFoam = 0.0;
@@ -752,13 +788,17 @@ function waterMaterial(heightTexture, uniforms) {
         vec2 groundUv = vWet.xz / uTerrainSize + 0.5;
         float ground = texture2D(uHeightMap, (groundUv * (uHeightTexels - 1.0) + 0.5) / uHeightTexels).r;
         float depth = vWet.y - ground;
+        // (the ground mesh is too coarse to show a narrow channel's depth: use the channel's own shape for its colour)
+        float a = abs(vAcross);
+        float channel = a < 1.0 ? uDepth * (1.0 - 0.7 * a * a) : 0.0;
         // Shallows: pale and clear enough to see the bed through (just as the sea's).
-        float shallow = 1.0 - smoothstep(0.0, uShallowDepth, depth);
+        // (a river's few metres look as deep as the open sea's: its shallows are only the margins)
+        float shallow = 1.0 - smoothstep(0.0, uShallowDepth * 0.35, max(depth, channel));
         diffuseColor.rgb = mix(diffuseColor.rgb, uShallowColor, shallow * 0.8);
-        diffuseColor.a = mix(0.12, diffuseColor.a, smoothstep(0.0, uShallowDepth * 0.7, depth)) * smoothstep(-0.08, 0.0, depth);
+        diffuseColor.a = mix(0.12, diffuseColor.a, smoothstep(0.0, uShallowDepth * 0.3, max(depth, channel))) * smoothstep(-0.08, 0.0, depth);
         // Foam: the sea's broken lace right at the edge, and white water where the river runs steep.
         float lace = aNoise(vWet.xz * 1.6 + uTime * 0.25) * 0.6 + aNoise(vWet.xz * 4.3 - uTime * 0.4) * 0.4;
-        float edge = 1.0 - smoothstep(0.0, 0.03 + lace * 0.1, depth);
+        float edge = (1.0 - smoothstep(0.0, 0.03 + lace * 0.1, depth)) * smoothstep(0.4, 0.7, lace) * 0.7; // (broken: a bank isn't a beach)
         vec2 q = vRiver;
         float streak = aNoise(vec2(q.x * 0.45 - uTime * 2.4, q.y * 2.6)) * 0.65 + aNoise(vec2(q.x * 1.1 - uTime * 3.6, q.y * 5.5)) * 0.35;
         float rapids = smoothstep(0.6, 0.85, streak) * vFoam * 0.8;
@@ -790,7 +830,7 @@ function waterMaterial(heightTexture, uniforms) {
         // Glitter: here and there a ripple throws the sun straight back at you.
         vec3 sunView = (viewMatrix * vec4(uFogSunDir, 0.0)).xyz;
         float mirror = pow(max(dot(reflect(-normalize(vViewPosition), normal), sunView), 0.0), 18.0);
-        float spark = smoothstep(0.78, 0.95, aNoise(vWet.xz * 7.0 + vec2(uTime * 1.7, -uTime * 1.1)) * 0.6 + aNoise(vWet.xz * 19.0 - uTime * 2.3) * 0.4);
+        float spark = 0.6 * smoothstep(0.84, 0.97, aNoise(vWet.xz * 7.0 + vec2(uTime * 1.7, -uTime * 1.1)) * 0.6 + aNoise(vWet.xz * 19.0 - uTime * 2.3) * 0.4);
         outgoingLight += uFogSunColor * mirror * spark * 40.0 * uGlitter * (1.0 - waterFoam) * atmoCloudLight();
         #include <opaque_fragment>`,
       );
@@ -827,7 +867,8 @@ export function createRiverWater(heightTexture) {
     const fadeAt = (p) =>
       smoothstep(0, 0.45, p.head) * // (water welling up out of the ground at a spring)
       Math.max(
-        smoothstep(0.3, 1.5, p.s - CONFIG.water.level),
+        // (fading out just where the sea starts to show beneath it: see createSeaMask)
+        smoothstep(0.1, SEA_SHOWS, p.s - CONFIG.water.level),
         (atSea(all[lo]) ? smoothstep(0, FADE, p.along - all[lo].along) : 1) * (atSea(all[hi]) ? smoothstep(0, FADE, all[hi].along - p.along) : 1),
       );
     const base = positions.length / 3;
@@ -849,7 +890,7 @@ export function createRiverWater(heightTexture) {
         flows.push(dx * speed, dz * speed);
         coords.push(Math.abs(p.along - river.points[river.source].along), w * side); // (metres from the source: increasing downstream, whichever way it runs)
         foams.push(p.foam);
-        across.push(side);
+        across.push((side * w) / Math.max(p.hw, MESH_CELL * 1.1));
         fades.push(fadeAt(p));
       }
       if (i < pts.length - 1) {
