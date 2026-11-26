@@ -227,17 +227,17 @@ export const CONFIG = {
       // the whole width of the island (round the western lagoons), cuts a gorge through
       // the eastern highlands and leaves through a tunnel in the cape, out of
       // the sea cliff into the ocean. Every step of the way is downhill.
-      points: [[32, 78], [66, 100], [98, 111], [118, 124], [132, 139], [160, 142], [188, 128], [210, 104], [270, 85], [360, 60], [455, 30], [545, 0], [630, -50], [700, -112], [745, -113], [790, -111], [850, -112]],
+      points: [[32, 78], [66, 100], [98, 111], [118, 124], [132, 139], [160, 142], [188, 128], [210, 104], [262, 70], [310, 92], [360, 60], [410, 62], [455, 30], [500, 42], [545, 0], [592, 8], [638, 6], [668, -30], [676, -70], [700, -112], [745, -113], [790, -111], [850, -112]],
       source: 0, // the waypoint it rises at
-      tunnel: [13, 16], // waypoints between which it runs in a slot, roofed over where the land is high (a tunnel)
+      tunnel: [19, 22], // waypoints between which it runs in a slot, roofed over where the land is high (a tunnel)
       halfWidth: [2.4, 5.5], // [at the source, at the mouth]
       depth: 2.6, // metres of water mid-stream (you float from about 1.4 m, so it is swimmable)
       sink: 0.6,
-      valley: 1.6,
+      valley: 4, // valley width per metre of depth: 4 = gentle slopes, 1 = a steep gorge
       plain: 4,
       spring: 0, // radius of a pool at the source (0 for none)
       smoothing: 8, // how gently the level falls (more = longer, smoother runs; less = sharper falls)
-      meander: 12, // how far it wanders from the waypoint line (metres)
+      meander: 28, // how far it wanders from the waypoint line (metres)
     },
   ],
 

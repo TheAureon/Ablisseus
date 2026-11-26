@@ -26,7 +26,7 @@ const CELL = 16;
 const index = new Map();
 const segs = [];
 const key = (cx, cz) => cx * 8192 + cz;
-const BANK_MAX = 45;
+const BANK_MAX = 120; // widest a valley side gets (m)
 const MESH_CELL = CONFIG.terrain.size / CONFIG.terrain.segments; // spacing of the ground mesh's points
 const LEDGE = 1.6; // dry ledge beside the water inside a tunnel (m)
 /** How big the river's bob is, as a share of the sea's swell (the player rides the same). */
@@ -112,12 +112,12 @@ function carve(x, z, h) {
     const dd = d + rough * (0.5 + 0.8 * inside); // (so the bank line wanders)
     const shore = edge + 0.55 * smoothstep(hw, hw + bar, dd) + 0.25 * (1 - inside) * smoothstep(hw, hw + 0.8, dd);
     if (h <= shore) return h;
-    const bank = Math.min(BANK_MAX, Math.max(MESH_CELL, (h - shore) * n.seg.valley * (0.5 + 0.9 * inside) * (1 + 0.35 * vary)));
+    // The valley it has worn: broad and gently sloped, wider the higher the land around
+    // (a little steeper on the outside of a bend, gentler on the inside).
+    const bank = Math.min(BANK_MAX, Math.max(MESH_CELL * 1.5, (h - shore) * n.seg.valley * (0.8 + 0.4 * inside) * (1 + 0.25 * vary)));
     if (dd > hw + bar + bank) return h;
     const k = smoothstep(hw + bar, hw + bar + bank, dd);
-    const cut = (1 - inside) * smoothstep(2.5, 4, hw); // (a cut bank rises steeply straight from the water; not on a stream too narrow to show it)
-    const shape = k + (Math.sqrt(k) - k) * cut;
-    return shore + (h - shore) * shape;
+    return shore + (h - shore) * k;
   }
   // Land lower than the water beside the river: low banks keep it in its bed.
   return levee(h, edge, d - hw, s);
@@ -172,25 +172,41 @@ export function buildRivers() {
       for (let d = 0; d < len; d += 3) course.push([ax + ((bx - ax) * d) / len, az + ((bz - az) * d) / len]);
     }
     course.push(smooth[smooth.length - 1]);
-    // (a tunnel runs fairly straight: little wander before the tunnel's far waypoint)
-    const [sx, sz] = def.points[def.tunnel ? def.tunnel[1] : 0];
-    const straightTo = def.tunnel ? course.reduce((b, c, i) => (Math.hypot(c[0] - sx, c[1] - sz) < Math.hypot(course[b][0] - sx, course[b][1] - sz) ? i : b), 0) : -1;
+    // (a tunnel runs fairly straight: little wander between its waypoints)
+    const nearestCourse = ([px, pz]) => course.reduce((b, c, k) => (Math.hypot(c[0] - px, c[1] - pz) < Math.hypot(course[b][0] - px, course[b][1] - pz) ? k : b), 0);
+    const [tunnelFrom, tunnelTo] = def.tunnel ? [nearestCourse(def.points[def.tunnel[0]]), nearestCourse(def.points[def.tunnel[1]])].sort((a, b) => a - b) : [-1, -1];
+    // Loops of every size, like a real river's: a long slow swing with smaller wiggles on it.
     let along = 0;
-    let straightAlong = 0;
-    const pts = course.map(([x, z], i) => {
+    const base = course.map(([x, z], i) => {
       const a = course[Math.max(0, i - 1)];
       const b = course[Math.min(course.length - 1, i + 1)];
-      const dx = b[0] - a[0];
-      const dz = b[1] - a[1];
-      const len = Math.hypot(dx, dz) || 1;
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
       if (i) along += Math.hypot(x - course[i - 1][0], z - course[i - 1][1]);
-      if (i === straightTo) straightAlong = along;
-      // Loops of every size, like a real river's: a long slow swing with smaller wiggles on it.
-      const swing = noise2(along * 0.009 + 50, 3) + 0.35 * noise2(along * 0.021 + 11, 7);
-      const settle = i <= straightTo ? 0.15 : smoothstep(0, 40, along - straightAlong);
-      const wander = swing * def.meander * settle * smoothstep(0, 40, along); // (none right at the first end)
-      return { x: x - (dz / len) * wander, z: z + (dx / len) * wander, along };
+      const swing = noise2(along * 0.0055 + 50, 3) + 0.4 * noise2(along * 0.013 + 11, 7);
+      const settle = 1 - 0.85 * smoothstep(tunnelFrom - 12, tunnelFrom, i) * (1 - smoothstep(tunnelTo, tunnelTo + 12, i)); // (a tunnel runs fairly straight)
+      return { x, z, along, sx: -(b[1] - a[1]) / len, sz: (b[0] - a[0]) / len, wander: swing * def.meander * settle * smoothstep(0, 40, along) };
     });
+    // Never wander off into low ground the waypoints kept clear of (a lagoon, the sea): the whole
+    // river's level would have to drop to it. Shrink the wander there, eased along the course.
+    const keepAbove = CONFIG.water.level + (def.keepAbove ?? 3);
+    const scale = base.map((p) => {
+      for (const f of [1, 0.75, 0.5, 0.25]) if (groundBeforeRivers(p.x + p.sx * p.wander * f, p.z + p.sz * p.wander * f) > keepAbove) return f;
+      return 0;
+    });
+    const eased = scale.map((_, i) => {
+      let low = 1;
+      for (let k = Math.max(0, i - 12); k <= Math.min(scale.length - 1, i + 12); k++) low = Math.min(low, scale[k] + Math.abs(k - i) * 0.06);
+      return low;
+    });
+    const pts = base.map((p, i) => {
+      let sum = 0;
+      let n = 0;
+      for (let k = Math.max(0, i - 6); k <= Math.min(eased.length - 1, i + 6); k++, n++) sum += eased[k];
+      const w = p.wander * (sum / n);
+      return { x: p.x + p.sx * w, z: p.z + p.sz * w, along: p.along };
+    });
+    // (recount the distance along it, now that it winds)
+    for (let i = 1; i < pts.length; i++) pts[i].along = pts[i - 1].along + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
     const closest = ([x, z]) => pts.reduce((best, p, i) => (Math.hypot(p.x - x, p.z - z) < Math.hypot(pts[best].x - x, pts[best].z - z) ? i : best), 0);
 
     // 2. Where it rises: the waypoint `source` (by default the first). From there the water runs
@@ -830,7 +846,7 @@ function waterMaterial(heightTexture, uniforms) {
         // Glitter: here and there a ripple throws the sun straight back at you.
         vec3 sunView = (viewMatrix * vec4(uFogSunDir, 0.0)).xyz;
         float mirror = pow(max(dot(reflect(-normalize(vViewPosition), normal), sunView), 0.0), 18.0);
-        float spark = 0.6 * smoothstep(0.84, 0.97, aNoise(vWet.xz * 7.0 + vec2(uTime * 1.7, -uTime * 1.1)) * 0.6 + aNoise(vWet.xz * 19.0 - uTime * 2.3) * 0.4);
+        float spark = 0.25 * smoothstep(0.86, 0.98, aNoise(vWet.xz * 7.0 + vec2(uTime * 1.7, -uTime * 1.1)) * 0.6 + aNoise(vWet.xz * 19.0 - uTime * 2.3) * 0.4);
         outgoingLight += uFogSunColor * mirror * spark * 40.0 * uGlitter * (1.0 - waterFoam) * atmoCloudLight();
         #include <opaque_fragment>`,
       );
