@@ -328,6 +328,7 @@ export function createSky(scene, renderer) {
   sc.far = 400;
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.06;
+  sun.shadow.radius = r.shadowSoftness ?? 2.5; // (soft-edged, as real sunlight casts: the sun isn't a point)
 
   const ambient = new THREE.HemisphereLight('#ffffff', '#444444', 1);
 

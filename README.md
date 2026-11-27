@@ -103,6 +103,7 @@ src/
     islands.js     the islands that make up the world
     biomes.js      regions with their own ground, terrain shape and mood
     shore.js       rock shelves and tide pools along the coast
+    groundTextures.js  photographic ground textures (grass, earth, rock, sand, snow) for the terrain
     river.js       hand-placed rivers: the valley they cut, flowing water, tunnels, footbridges
     landmarks.js   one large natural feature per biome, placed automatically
     trails.js      footpaths between camp and landmarks, plus lanterns, signposts, camps
@@ -113,3 +114,7 @@ src/
     sky.js         sky dome, sun/moon, clouds, Milky Way, aurora, planet, fog, time of day
     motes.js       drifting pollen / fireflies
 ```
+
+## Credits
+
+Ground textures in `src/world/textures/` are from [Poly Haven](https://polyhaven.com) (CC0): forrest_ground_01, dry_ground_rocks, rock_face_03, gravelly_sand, snow_02.

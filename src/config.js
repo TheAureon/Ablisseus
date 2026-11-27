@@ -118,6 +118,9 @@ export const CONFIG = {
     lacunarity: 2.1,
     seabedDepth: 8,
     flatShading: false, // true = faceted low-poly look
+    // Photographic ground textures (src/world/textures): metres each repeats over, and how
+    // strongly their bumps catch the light.
+    textures: { grass: 3.5, earth: 4.5, rock: 9, sand: 3, snow: 6, bumps: 0.55 },
     detail: 0.5, // fine unevenness in how the ground catches light, close up (0 = perfectly smooth)
     // How the ground reads as a material rather than smooth paint.
     //   texture: mottling, clumps, grit, rock streaks and surface relief (0 = off, 1 = full)
@@ -422,12 +425,12 @@ export const CONFIG = {
   horizon: {
     enabled: true,
     snowColor: '#eef2f6',
-    snowLine: 0.55, // fraction of a range's height where snow begins
+    snowLine: 0.62, // fraction of a range's height where snow begins
     detail: 1, // how deeply the faces are carved by gullies (0 = flat)
     ranges: [
-      { distance: 2400, height: 700,  gaps: 0.5,  haze: 0.22, color: '#56606e' },
-      { distance: 4200, height: 1500, gaps: 0.42, haze: 0.42, color: '#5d6878' },
-      { distance: 6800, height: 2700, gaps: 0.36, haze: 0.6,  color: '#667284' },
+      { distance: 2600, height: 520,  gaps: 0.5,  haze: 0.16, color: '#4a5046' },
+      { distance: 4600, height: 1100, gaps: 0.42, haze: 0.34, color: '#535a5e' },
+      { distance: 7400, height: 2000, gaps: 0.36, haze: 0.52, color: '#5e6672' },
     ],
   },
 
@@ -538,7 +541,7 @@ export const CONFIG = {
     // One switch for the expensive settings: 'low', 'medium', 'high', 'ultra', or
     // 'custom' to use the values below exactly as written. (Each preset is listed
     // in QUALITY_PRESETS at the bottom of this file.) Changeable in the G panel.
-    quality: 'high',
+    quality: 'ultra',
     toneMapping: 'neutral', // 'neutral' (truest colours), 'aces' (punchier, warmer) or 'agx' (softest)
     fov: 65,
 maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = faster)
@@ -552,6 +555,9 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
     shadows: true,
     shadowMapSize: 2048,
     shadowDistance: 70, // radius around the player that receives shadows
+    shadowSoftness: 2.5, // how soft shadow edges are (in shadow-map texels)
+    // Ambient occlusion: soft contact shadows where things meet (radius in metres; costs some frame rate).
+    ao: { enabled: true, radius: 2.5, strength: 0.85, samples: 12 },
     // Finishing touches applied to the whole picture (1 = unchanged for saturation/contrast, 0 = off for the rest).
     grade: { enabled: true, saturation: 1.08, contrast: 1.03, vignette: 0.22, warmth: 0.6 },
     // Shafts of light from the sun, cut by whatever stands in front of it. Strongest when the sun is low.
@@ -619,19 +625,19 @@ maxPixelRatio: 1.5, // sharpness cap on high-density screens (2 = sharper, 1 = f
 // remembered by the browser and wins over `render.quality` above.
 export const QUALITY_PRESETS = {
   low: {
-    render: { maxPixelRatio: 1, antialias: 0, shadowMapSize: 1024, shadowDistance: 45, drawDistanceScale: 0.65, farDrawDistance: 380, godRays: { enabled: false }, adaptive: { minScale: 0.5 } },
+    render: { ao: { enabled: false }, maxPixelRatio: 1, antialias: 0, shadowMapSize: 1024, shadowDistance: 45, drawDistanceScale: 0.65, farDrawDistance: 380, godRays: { enabled: false }, adaptive: { minScale: 0.5 } },
     atmosphere: { hillShadows: { steps: 0 }, skyLight: { enabled: false } },
   },
   medium: {
-    render: { maxPixelRatio: 1.25, antialias: 2, shadowMapSize: 2048, shadowDistance: 60, drawDistanceScale: 0.85, farDrawDistance: 450, godRays: { enabled: true, samples: 28 } },
+    render: { ao: { enabled: false }, maxPixelRatio: 1.25, antialias: 2, shadowMapSize: 2048, shadowDistance: 60, drawDistanceScale: 0.85, farDrawDistance: 450, godRays: { enabled: true, samples: 28 } },
     atmosphere: { hillShadows: { steps: 24 }, skyLight: { enabled: true, size: 64 } },
   },
   high: {
-    render: { maxPixelRatio: 1.5, antialias: 4, shadowMapSize: 2048, shadowDistance: 70, drawDistanceScale: 1, farDrawDistance: 520, godRays: { enabled: true, samples: 44 } },
+    render: { ao: { enabled: true, samples: 8 }, maxPixelRatio: 1.5, antialias: 4, shadowMapSize: 2048, shadowDistance: 70, drawDistanceScale: 1, farDrawDistance: 520, godRays: { enabled: true, samples: 44 } },
     atmosphere: { hillShadows: { steps: 40 }, skyLight: { enabled: true, size: 128 } },
   },
   ultra: {
-    render: { maxPixelRatio: 2, antialias: 4, shadowMapSize: 4096, shadowDistance: 110, drawDistanceScale: 1.35, farDrawDistance: 700, godRays: { enabled: true, samples: 60 } },
+    render: { ao: { enabled: true, samples: 16 }, maxPixelRatio: 2, antialias: 4, shadowMapSize: 4096, shadowDistance: 110, drawDistanceScale: 1.35, farDrawDistance: 700, godRays: { enabled: true, samples: 60 } },
     atmosphere: { hillShadows: { steps: 64, reach: 480 }, skyLight: { enabled: true, size: 256 } },
   },
 };

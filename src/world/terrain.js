@@ -318,7 +318,7 @@ export function groundColorAt(x, z, y, steep, out) {
  * @param pathTexture optional trail mask (red channel = footpath)
  * @param canopies    optional [{ x, z, r }] trees, whose shade darkens the ground beneath them
  */
-export function createTerrain(pathTexture = null, canopies = []) {
+export function createTerrain(pathTexture = null, canopies = [], ground = null) {
   const c = CONFIG.terrain;
   const { grid, resolution } = ensureHeightGrid();
   const cells = resolution - 1;
@@ -360,6 +360,7 @@ export function createTerrain(pathTexture = null, canopies = []) {
   groundMaterial = material;
   // Ground is matte: only a little of the shared sky-coloured rim light (see atmosphere.js).
   material.defines = { ATMO_RIM_SCALE: CONFIG.terrain.surface.rim.toFixed(3) };
+  if (ground) material.defines.GROUND_TEX = 1; // photographic ground textures (groundTextures.js)
   // Without trails there is still a (blank) mask, so the shader is the same either way.
   const pathMap = pathTexture ?? new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
   pathMap.needsUpdate = true;
@@ -377,6 +378,14 @@ export function createTerrain(pathTexture = null, canopies = []) {
     shader.uniforms.uSeaLevel = terrainUniforms.uSeaLevel;
     shader.uniforms.uWetReach = { value: c.beach.wetReach };
     shader.uniforms.uBeachTop = { value: CONFIG.water.level + c.sandHeight * 1.5 };
+    if (ground) {
+      const T = c.textures;
+      shader.uniforms.uGroundCol = { value: ground.colour };
+      shader.uniforms.uGroundNor = { value: ground.normal };
+      shader.uniforms.uGroundMean = { value: ground.means.map((m) => new THREE.Vector3(m.r, m.g, m.b)) };
+      shader.uniforms.uGroundScale = { value: [T.grass, T.earth, T.rock, T.sand, T.snow] };
+      shader.uniforms.uGroundBumps = { value: T.bumps };
+    }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float uTerrainSize;\nattribute float aOcclusion;\nattribute float aWaterLevel;\nvarying float vWaterLevel;\nvarying float vOcclusion;\nvarying vec3 vNormalWorld;\nvarying vec2 vPathUv;\nvarying vec3 vGround;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position;\nvOcclusion = aOcclusion;\nvWaterLevel = aWaterLevel;\nvNormalWorld = normal;\nvPathUv = position.xz / uTerrainSize + 0.5;');
@@ -410,7 +419,36 @@ export function createTerrain(pathTexture = null, canopies = []) {
         float groundRelief(vec2 p) { return aNoise(p * 0.18) * 0.55 + aNoise(mat2(0.8, 0.6, -0.6, 0.8) * p * 0.47 + 31.0) * 0.3 + aNoise(mat2(0.6, -0.8, 0.8, 0.6) * p * 1.3 + 17.0) * 0.15; }
         // Each octave is turned by an odd angle, so the noise's square grid never lines up between layers.
         const mat2 octaveTurn = mat2(1.6, 1.2, -1.2, 1.6);
-        float fbm4(vec2 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 4; i++) { v += a * aNoise(p); p = octaveTurn * p + 11.0; a *= 0.5; } return v / 0.9375; }`,
+        float fbm4(vec2 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 4; i++) { v += a * aNoise(p); p = octaveTurn * p + 11.0; a *= 0.5; } return v / 0.9375; }
+        #ifdef GROUND_TEX
+        uniform highp sampler2DArray uGroundCol;
+        uniform highp sampler2DArray uGroundNor;
+        uniform vec3 uGroundMean[5];
+        uniform float uGroundScale[5];
+        uniform float uGroundBumps;
+        vec4 gW = vec4(0.0); // how much grass, earth, rock, sand is here…
+        float gSnow = 0.0; // …and snow
+        // Each texture is read twice, at two sizes and angles, and the two mixed by a slow
+        // noise: no repeating pattern shows across a field.
+        const mat2 GROT = mat2(0.8, -0.6, 0.6, 0.8);
+        float gMix(vec2 p, float layer) { return smoothstep(0.3, 0.7, aNoise(p * 0.031 + layer * 7.3)); }
+        vec3 gCol(vec2 p, int i) {
+          float l = float(i);
+          float sc = uGroundScale[i];
+          vec3 a = texture(uGroundCol, vec3(p / sc, l)).rgb;
+          vec3 b = texture(uGroundCol, vec3(GROT * p / (sc * 1.37) + 0.37, l)).rgb;
+          return mix(a, b, gMix(p, l)) / max(uGroundMean[i], vec3(0.02));
+        }
+        // Normal map bumps as a world-space lean (x, z), from a top-down projection.
+        vec2 gNor(vec2 p, int i) {
+          float l = float(i);
+          float sc = uGroundScale[i];
+          vec2 a = texture(uGroundNor, vec3(p / sc, l)).xy * 2.0 - 1.0;
+          vec2 b = texture(uGroundNor, vec3(GROT * p / (sc * 1.37) + 0.37, l)).xy * 2.0 - 1.0;
+          b = transpose(GROT) * b; // (turned back to match)
+          return mix(a, b, gMix(p, l));
+        }
+        #endif`,
       )
       .replace(
         '#include <color_fragment>',
@@ -446,6 +484,43 @@ export function createTerrain(pathTexture = null, canopies = []) {
         float near = 1.0 - smoothstep(25.0, 140.0, viewDist);
         float mid = 1.0 - smoothstep(120.0, 520.0, viewDist);
         float S = uSurface;
+        float steepness = 1.0 - normalize(vNormalWorld).y;
+        #ifdef GROUND_TEX
+        {
+          // Which kind of ground: rock on steep slopes, sand on the beaches, snow where the
+          // biome is white, grass where it is green, bare earth elsewhere (and in worn patches).
+          float wRock = smoothstep(0.24, 0.46, steepness);
+          float wSand = (1.0 - wRock) * beach;
+          float wSnow = (1.0 - wRock) * (1.0 - beach) * pale;
+          float rest = max(0.0, 1.0 - wRock - wSand - wSnow);
+          float worn = smoothstep(0.55, 0.85, fbm4(vGroundXZ * 0.07 + 77.0)) * 0.7 + pathWear;
+          float wGrass = rest * clamp(green * 1.8, 0.0, 1.0) * (1.0 - clamp(worn, 0.0, 1.0));
+          float wEarth = rest - wGrass;
+          gW = vec4(wGrass, wEarth, wRock, wSand);
+          gSnow = wSnow;
+          vec3 detail = vec3(0.0);
+          if (wGrass > 0.01) detail += wGrass * gCol(vGroundXZ, 0);
+          if (wEarth > 0.01) detail += wEarth * gCol(vGroundXZ, 1);
+          if (wSand > 0.01) detail += wSand * gCol(vGroundXZ, 3);
+          if (wSnow > 0.01) detail += wSnow * gCol(vGroundXZ, 4);
+          if (wRock > 0.01) {
+            // Rock is projected from all three sides, so cliffs aren't smeared.
+            vec3 nw = abs(normalize(vNormalWorld));
+            vec3 tw = pow(nw, vec3(4.0));
+            tw /= tw.x + tw.y + tw.z;
+            vec3 rx = texture(uGroundCol, vec3(vGround.zy / uGroundScale[2], 2.0)).rgb;
+            vec3 ry = texture(uGroundCol, vec3(vGround.xz / uGroundScale[2], 2.0)).rgb;
+            vec3 rz = texture(uGroundCol, vec3(vGround.xy / uGroundScale[2], 2.0)).rgb;
+            detail += wRock * (rx * tw.x + ry * tw.y + rz * tw.z) / max(uGroundMean[2], vec3(0.02));
+          }
+          // The biome's colour, with the photographs' detail (their own average colour taken out).
+          float keep = 1.0 - smoothstep(500.0, 1400.0, viewDist) * 0.6;
+          diffuseColor.rgb *= mix(vec3(1.0), clamp(detail, 0.0, 2.5), keep);
+          // Broad patchwork of lusher and drier grass, so a meadow isn't one even colour.
+          float patchB = fbm4(vGroundXZ * 0.045 - 9.0);
+          diffuseColor.rgb *= mix(vec3(1.0), mix(vec3(0.86, 0.98, 0.9), vec3(1.08, 1.02, 0.82), smoothstep(0.3, 0.72, patchB)), clamp(wGrass * 0.8, 0.0, 1.0));
+        }
+        #else
 
         // Patchwork a few metres across: lusher and drier, warmer and cooler.
         float patchA = fbm4(vGroundXZ * 0.11 + 3.0);
@@ -466,7 +541,6 @@ export function createTerrain(pathTexture = null, canopies = []) {
         diffuseColor.rgb *= 1.0 + (grit - 0.5) * (0.34 - pale * 0.18) * S * near;
 
         // Steep ground: weathered rock with streaks running down the slope and darker cracks.
-        float steepness = 1.0 - normalize(vNormalWorld).y;
         float rockiness = smoothstep(0.2, 0.5, steepness);
         if (rockiness > 0.0) {
           vec2 face = vec2(vGround.x + vGround.z, vGround.y * 2.4);
@@ -474,6 +548,8 @@ export function createTerrain(pathTexture = null, canopies = []) {
           float cracks = smoothstep(0.03, 0.0, abs(aNoise(face * vec2(0.4, 0.25)) - 0.5));
           diffuseColor.rgb *= 1.0 - rockiness * S * ((streaks - 0.5) * 0.4 + cracks * 0.3 * mid);
         }
+
+        #endif
 
         // Under water: ripples of light dance across the bottom in the shallows.
         // (in a river: its own level, and only faintly — river water is seldom still and clear enough for a bright web)
@@ -494,7 +570,35 @@ export function createTerrain(pathTexture = null, canopies = []) {
         // Cliffs and other steep rock: light it as broken, angular facets (from
         // the triangles themselves) with vertical ribs and fissures, not as a
         // smooth slope.
+        #ifdef GROUND_TEX
+        {
+          // The photographs' bumps: soil, pebbles, grass roots, cracks in the rock.
+          float fadeN = 1.0 - smoothstep(30.0, 260.0, length(vViewPosition));
+          if (fadeN > 0.0) {
+            vec3 nw = normalize(vNormalWorld);
+            vec2 lean = vec2(0.0);
+            if (gW.x > 0.01) lean += gW.x * gNor(vGround.xz, 0);
+            if (gW.y > 0.01) lean += gW.y * gNor(vGround.xz, 1);
+            if (gW.w > 0.01) lean += gW.w * gNor(vGround.xz, 3);
+            if (gSnow > 0.01) lean += gSnow * gNor(vGround.xz, 4);
+            vec3 n = nw + vec3(lean.x, 0.0, lean.y) * uGroundBumps;
+            if (gW.z > 0.01) {
+              vec3 tw = pow(abs(nw), vec3(4.0));
+              tw /= tw.x + tw.y + tw.z;
+              vec2 nx = texture(uGroundNor, vec3(vGround.zy / uGroundScale[2], 2.0)).xy * 2.0 - 1.0;
+              vec2 ny = texture(uGroundNor, vec3(vGround.xz / uGroundScale[2], 2.0)).xy * 2.0 - 1.0;
+              vec2 nz = texture(uGroundNor, vec3(vGround.xy / uGroundScale[2], 2.0)).xy * 2.0 - 1.0;
+              // (each projection's bumps leaned onto the axes it lies across)
+              vec3 rockLean = tw.x * vec3(0.0, nx.y, nx.x) * sign(nw.x) + tw.y * vec3(ny.x, 0.0, ny.y) + tw.z * vec3(nz.x, nz.y, 0.0) * sign(nw.z);
+              n += rockLean * gW.z * uGroundBumps * 1.4;
+            }
+            normal = normalize(mix(normal, normalize((viewMatrix * vec4(normalize(n), 0.0)).xyz), fadeN));
+          }
+        }
+        float rockFace = 0.0; // (real rock texture instead of faceting)
+        #else
         float rockFace = smoothstep(0.28, 0.55, steepness) * uRockFacets;
+        #endif
         if (rockFace > 0.0) {
           vec3 facet = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
           normal = normalize(mix(normal, facet, rockFace * 0.85));
@@ -511,9 +615,16 @@ export function createTerrain(pathTexture = null, canopies = []) {
           float rx = groundRelief(vGround.xz + vec2(0.6, 0.0));
           float rz = groundRelief(vGround.xz + vec2(0.0, 0.6));
           vec3 relief = vec3(r0 - rx, 0.0, r0 - rz) * 4.5 * uSurface * reliefFade * (1.0 - groundWet);
+          #ifdef GROUND_TEX
+          relief *= 0.5; // (the textures carry the small bumps now)
+          #endif
           normal = normalize(normal + (viewMatrix * vec4(relief, 0.0)).xyz);
         }
+        #ifdef GROUND_TEX
+        float bumpFade = 0.0;
+        #else
         float bumpFade = 1.0 - smoothstep(18.0, 90.0, length(vViewPosition));
+        #endif
         if (bumpFade > 0.0) {
           float b0 = groundBump(vGround.xz);
           float bx = groundBump(vGround.xz + vec2(0.2, 0.0));
@@ -523,7 +634,14 @@ export function createTerrain(pathTexture = null, canopies = []) {
         }`,
       )
       // Wet ground is glossy.
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.28, groundWet);')
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        #ifdef GROUND_TEX
+        roughnessFactor = dot(gW, vec4(0.95, 0.92, 0.78, 0.9)) + gSnow * 0.55;
+        #endif
+        roughnessFactor = mix(roughnessFactor, 0.28, groundWet);`,
+      )
       // Occlusion takes away soft sky light fully, and a little of the direct light too.
       .replace(
         '#include <lights_fragment_end>',

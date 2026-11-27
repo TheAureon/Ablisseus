@@ -6,12 +6,14 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import GUI from 'lil-gui';
 
 import { CONFIG, QUALITY_PRESETS } from './config.js';
 import { atmosphere, GradeShader, GodRaysPass, HillShadowBaker } from './atmosphere.js'; // (first: it upgrades the fog for every material made after)
 import { loadAssets } from './assets.js';
+import { loadGroundTextures } from './world/groundTextures.js';
 import { createTerrain, createWater, createHeightTexture, terrainUniforms, waterNearness, heightAt } from './world/terrain.js';
 import { placeTidePools } from './world/shore.js';
 import { biomeWeights, blend, blendColor, dominant, biomeLabel, biomeIndex, BIOME_NAMES } from './world/biomes.js';
@@ -60,6 +62,15 @@ composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(innerWidth, innerHeight);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), bloomCfg.strength, bloomCfg.radius, bloomCfg.threshold);
 composer.addPass(new RenderPass(scene, camera));
+// Ambient occlusion: the soft darkening where things meet — tree roots in the
+// ground, the gaps between rocks, the shade under a bridge.
+if (CONFIG.render.ao.enabled) {
+  const ao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+  ao.updateGtaoMaterial({ radius: CONFIG.render.ao.radius, distanceExponent: 1.5, thickness: 2, scale: 1, samples: CONFIG.render.ao.samples });
+  ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+  ao.blendIntensity = CONFIG.render.ao.strength;
+  composer.addPass(ao);
+}
 const godRays = new GodRaysPass();
 composer.addPass(godRays);
 composer.addPass(bloom);
@@ -79,7 +90,7 @@ addEventListener('resize', () => {
 const live = { time: CONFIG.title.time ?? CONFIG.time.start, fog: 1, tidePhase: -0.9 }; // values the tweak panel changes at runtime
 const adaptive = { scale: 1, frames: 0, seconds: 0, goodSeconds: 0, patience: 4, warmup: 3, steppedUp: false }; // resolution auto-scaling state
 
-const templates = await loadAssets();
+const [templates, groundTextures] = await Promise.all([loadAssets(), loadGroundTextures()]);
 
 // Landmarks choose their spots first, trails are planned between them, and
 // only then is everything else grown around the paths.
@@ -91,7 +102,7 @@ const heightTexture = createHeightTexture();
 const hillShadows = new HillShadowBaker(renderer, heightTexture);
 const water = createWater(heightTexture, createSeaMask());
 const scatter = createScatter(templates, trails); // (before the terrain, which shades the ground under the trees)
-scene.add(createTerrain(trails.texture, canopies), water, scatter, createLandmarks(templates, landmarks));
+scene.add(createTerrain(trails.texture, canopies, groundTextures), water, scatter, createLandmarks(templates, landmarks));
 if (tidePools.length) scene.add(createPlacedProps(templates.rockPool, 'rockPool', tidePools, { castShadow: false, drawDistance: 220 }));
 for (const [asset, placements] of Object.entries(trails.props)) {
   if (placements.length) scene.add(createPlacedProps(templates[asset], asset, placements, { drawDistance: 380 }));
